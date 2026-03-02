@@ -175,6 +175,24 @@ describe("monitorMSTeamsProvider lifecycle", () => {
     );
   });
 
+  it("returns a shutdown handle when abort signal is not provided", async () => {
+    const stores = createStores();
+    const result = await monitorMSTeamsProvider({
+      cfg: createConfig(0),
+      runtime: createRuntime(),
+      conversationStore: stores.conversationStore,
+      pollStore: stores.pollStore,
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        shutdown: expect.any(Function),
+      }),
+    );
+
+    await expect(result.shutdown()).resolves.toBeUndefined();
+  });
+
   it("rejects startup when webhook port is already in use", async () => {
     expressControl.mode.value = "error";
     await expect(

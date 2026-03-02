@@ -47,6 +47,7 @@ Docs: https://docs.openclaw.ai
 
 ### Fixes
 
+- MSTeams/gateway lifecycle: keep `startAccount` pending until shutdown/abort to stop false auto-restart loops, fail fast on startup bind errors, and add lifecycle regressions for abort + startup failure behavior. (#24580) Thanks @chilu18.
 - Synology Chat/webhook compatibility: accept JSON and alias payload fields, allow token resolution from body/query/header sources, and ACK webhook requests with `204` to avoid persistent `Processing...` states in Synology Chat clients. (#26635) Thanks @memphislee09-source.
 - Synology Chat/webhook ingress hardening: enforce bounded body reads (size + timeout) via shared request-body guards to prevent unauthenticated slow-body hangs before token validation. (#25831) Thanks @bmendonca3.
 - Synology Chat/reply delivery: resolve webhook usernames to Chat API `user_id` values for outbound chatbot replies, avoiding mismatches between webhook user IDs and `method=chatbot` recipient IDs in multi-account setups. (#23709) Thanks @druide67.

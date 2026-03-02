@@ -277,7 +277,6 @@ export async function monitorMSTeamsProvider(
   const httpServer = expressApp.listen(port);
   await new Promise<void>((resolve, reject) => {
     const onListening = () => {
-      httpServer.off("error", onError);
       log.info(`msteams provider started on port ${port}`);
       resolve();
     };
@@ -306,24 +305,30 @@ export async function monitorMSTeamsProvider(
     });
   };
 
-  // Handle abort signal
-  const onAbort = () => {
-    void shutdown();
-  };
-  if (opts.abortSignal) {
-    if (opts.abortSignal.aborted) {
-      onAbort();
-    } else {
-      opts.abortSignal.addEventListener("abort", onAbort, { once: true });
-    }
+  // Some direct callers may invoke monitor without lifecycle wiring.
+  // Return immediately so they can call shutdown explicitly.
+  if (!opts.abortSignal) {
+    return { app: expressApp, shutdown };
   }
 
-  // Keep this task alive until shutdown/close so gateway runtime does not treat startup as exit.
-  await new Promise<void>((resolve) => {
+  const closePromise = new Promise<void>((resolve) => {
     httpServer.once("close", () => {
       resolve();
     });
   });
+
+  // Handle abort signal
+  const onAbort = () => {
+    void shutdown();
+  };
+  if (opts.abortSignal.aborted) {
+    onAbort();
+  } else {
+    opts.abortSignal.addEventListener("abort", onAbort, { once: true });
+  }
+
+  // Keep this task alive until shutdown/close so gateway runtime does not treat startup as exit.
+  await closePromise;
   opts.abortSignal?.removeEventListener("abort", onAbort);
 
   return { app: expressApp, shutdown };
