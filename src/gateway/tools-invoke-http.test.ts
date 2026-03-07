@@ -117,6 +117,12 @@ vi.mock("../agents/openclaw-tools.js", () => {
         if (mode === "auth") {
           throw toolAuthorizationError("mode forbidden");
         }
+        if (mode === "zod") {
+          const err = new Error("invalid tool payload") as Error & { issues?: unknown[] };
+          err.name = "ZodError";
+          err.issues = [{ path: ["amount"], message: "Required", code: "invalid_type" }];
+          throw err;
+        }
         if (mode === "crash") {
           throw new Error("boom");
         }
@@ -540,7 +546,7 @@ describe("POST /tools/invoke", () => {
     expect(resMain.status).toBe(200);
   });
 
-  it("maps tool input/auth errors to 400/403 and unexpected execution errors to 500", async () => {
+  it("maps tool input/auth/schema errors to 400/403 and unexpected execution errors to 500", async () => {
     cfg = {
       ...cfg,
       agents: {
@@ -569,6 +575,17 @@ describe("POST /tools/invoke", () => {
     expect(authBody.ok).toBe(false);
     expect(authBody.error?.type).toBe("tool_error");
     expect(authBody.error?.message).toBe("mode forbidden");
+
+    const zodRes = await invokeToolAuthed({
+      tool: "tools_invoke_test",
+      args: { mode: "zod" },
+      sessionKey: "main",
+    });
+    expect(zodRes.status).toBe(400);
+    const zodBody = await zodRes.json();
+    expect(zodBody.ok).toBe(false);
+    expect(zodBody.error?.type).toBe("tool_error");
+    expect(zodBody.error?.message).toBe("invalid tool payload");
 
     const crashRes = await invokeToolAuthed({
       tool: "tools_invoke_test",
