@@ -7,11 +7,11 @@ import {
   getCachedExtensionHostRegistry,
   setCachedExtensionHostRegistry,
 } from "../extension-host/loader-cache.js";
+import { resolveExtensionHostDiscoveryPolicy } from "../extension-host/loader-discovery-policy.js";
 import {
   buildExtensionHostProvenanceIndex,
   compareExtensionHostDuplicateCandidateOrder,
   pushExtensionHostDiagnostics,
-  warnWhenExtensionAllowlistIsOpen,
 } from "../extension-host/loader-policy.js";
 import type { GatewayRequestHandler } from "../gateway/server-methods/types.js";
 import { createSubsystemLogger } from "../logging/subsystem.js";
@@ -132,8 +132,7 @@ export function loadExtensionHostPluginRegistry(
     diagnostics: discovery.diagnostics,
   });
   pushExtensionHostDiagnostics(registry.diagnostics, manifestRegistry.diagnostics);
-  warnWhenExtensionAllowlistIsOpen({
-    logger,
+  const discoveryPolicy = resolveExtensionHostDiscoveryPolicy({
     pluginsEnabled: normalized.enabled,
     allow: normalized.allow,
     warningCacheKey: cacheKey,
@@ -144,6 +143,9 @@ export function loadExtensionHostPluginRegistry(
       origin: plugin.origin,
     })),
   });
+  for (const warning of discoveryPolicy.warningMessages) {
+    logger.warn(warning);
+  }
   const provenance = buildExtensionHostProvenanceIndex({
     config: cfg,
     normalizedLoadPaths: normalized.loadPaths,

@@ -3,13 +3,10 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { PluginCandidate } from "../plugins/discovery.js";
-import { createEmptyPluginRegistry } from "../plugins/registry.js";
 import {
   buildExtensionHostProvenanceIndex,
   compareExtensionHostDuplicateCandidateOrder,
   createExtensionHostPluginRecord,
-  warnAboutUntrackedLoadedExtensions,
-  warnWhenExtensionAllowlistIsOpen,
 } from "./loader-policy.js";
 
 const tempDirs: string[] = [];
@@ -92,87 +89,5 @@ describe("extension host loader policy", () => {
         env,
       }),
     ).toBeLessThan(0);
-  });
-
-  it("warns when allowlist is open for non-bundled discoverable plugins", () => {
-    const warnings: string[] = [];
-    const warningCache = new Set<string>();
-
-    warnWhenExtensionAllowlistIsOpen({
-      logger: {
-        info: () => {},
-        warn: (message) => warnings.push(message),
-        error: () => {},
-      },
-      pluginsEnabled: true,
-      allow: [],
-      warningCacheKey: "warn-key",
-      warningCache,
-      discoverablePlugins: [
-        { id: "bundled", source: "/bundled/index.js", origin: "bundled" },
-        { id: "workspace-demo", source: "/workspace/demo.js", origin: "workspace" },
-      ],
-    });
-
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("plugins.allow is empty");
-    expect(warningCache.has("warn-key")).toBe(true);
-  });
-
-  it("warns about loaded untracked non-bundled plugins", () => {
-    const trackedDir = makeTempDir();
-    const untrackedDir = makeTempDir();
-    const trackedFile = path.join(trackedDir, "tracked.js");
-    const untrackedFile = path.join(untrackedDir, "untracked.js");
-    fs.writeFileSync(trackedFile, "export {};\n", "utf8");
-    fs.writeFileSync(untrackedFile, "export {};\n", "utf8");
-
-    const registry = createEmptyPluginRegistry();
-    registry.plugins.push(
-      {
-        ...createExtensionHostPluginRecord({
-          id: "tracked",
-          source: trackedFile,
-          origin: "workspace",
-          enabled: true,
-          configSchema: false,
-        }),
-        status: "loaded",
-      },
-      {
-        ...createExtensionHostPluginRecord({
-          id: "untracked",
-          source: untrackedFile,
-          origin: "workspace",
-          enabled: true,
-          configSchema: false,
-        }),
-        status: "loaded",
-      },
-    );
-
-    const warnings: string[] = [];
-    const env = { ...process.env, HOME: makeTempDir() };
-    const provenance = buildExtensionHostProvenanceIndex({
-      config: {},
-      normalizedLoadPaths: [trackedDir],
-      env,
-    });
-
-    warnAboutUntrackedLoadedExtensions({
-      registry,
-      provenance,
-      logger: {
-        info: () => {},
-        warn: (message) => warnings.push(message),
-        error: () => {},
-      },
-      env,
-    });
-
-    expect(registry.diagnostics).toHaveLength(1);
-    expect(registry.diagnostics[0]?.pluginId).toBe("untracked");
-    expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("untracked");
   });
 });

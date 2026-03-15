@@ -1,5 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
 import type { OpenClawConfig } from "../config/config.js";
 import type { PluginCandidate } from "../plugins/discovery.js";
 import { isPathInside, safeStatSync } from "../plugins/path-safety.js";
@@ -10,14 +8,6 @@ import {
   appendExtensionHostPluginRecord,
   setExtensionHostPluginRecordLifecycleState,
 } from "./loader-state.js";
-
-function safeRealpathOrResolve(value: string): string {
-  try {
-    return fs.realpathSync(value);
-  } catch {
-    return path.resolve(value);
-  }
-}
 
 type PathMatcher = {
   exact: Set<string>;
@@ -184,25 +174,6 @@ export function buildExtensionHostProvenanceIndex(params: {
   return { loadPathMatcher, installRules };
 }
 
-function isTrackedByProvenance(params: {
-  pluginId: string;
-  source: string;
-  index: ExtensionHostProvenanceIndex;
-  env: NodeJS.ProcessEnv;
-}): boolean {
-  const sourcePath = resolveUserPath(params.source, params.env);
-  const installRule = params.index.installRules.get(params.pluginId);
-  if (installRule) {
-    if (installRule.trackedWithoutPaths) {
-      return true;
-    }
-    if (matchesPathMatcher(installRule.matcher, sourcePath)) {
-      return true;
-    }
-  }
-  return matchesPathMatcher(params.index.loadPathMatcher, sourcePath);
-}
-
 function matchesExplicitInstallRule(params: {
   pluginId: string;
   source: string;
@@ -273,64 +244,4 @@ export function compareExtensionHostDuplicateCandidateOrder(params: {
       env: params.env,
     })
   );
-}
-
-export function warnWhenExtensionAllowlistIsOpen(params: {
-  logger: PluginLogger;
-  pluginsEnabled: boolean;
-  allow: string[];
-  warningCacheKey: string;
-  warningCache: Set<string>;
-  discoverablePlugins: Array<{ id: string; source: string; origin: PluginRecord["origin"] }>;
-}): void {
-  if (!params.pluginsEnabled || params.allow.length > 0) {
-    return;
-  }
-  const nonBundled = params.discoverablePlugins.filter((entry) => entry.origin !== "bundled");
-  if (nonBundled.length === 0 || params.warningCache.has(params.warningCacheKey)) {
-    return;
-  }
-  const preview = nonBundled
-    .slice(0, 6)
-    .map((entry) => `${entry.id} (${entry.source})`)
-    .join(", ");
-  const extra = nonBundled.length > 6 ? ` (+${nonBundled.length - 6} more)` : "";
-  params.warningCache.add(params.warningCacheKey);
-  params.logger.warn(
-    `[plugins] plugins.allow is empty; discovered non-bundled plugins may auto-load: ${preview}${extra}. Set plugins.allow to explicit trusted ids.`,
-  );
-}
-
-export function warnAboutUntrackedLoadedExtensions(params: {
-  registry: PluginRegistry;
-  provenance: ExtensionHostProvenanceIndex;
-  logger: PluginLogger;
-  env: NodeJS.ProcessEnv;
-}): void {
-  for (const plugin of params.registry.plugins) {
-    if (plugin.status !== "loaded" || plugin.origin === "bundled") {
-      continue;
-    }
-    if (
-      isTrackedByProvenance({
-        pluginId: plugin.id,
-        source: plugin.source,
-        index: params.provenance,
-        env: params.env,
-      })
-    ) {
-      continue;
-    }
-    const message =
-      "loaded without install/load-path provenance; treat as untracked local code and pin trust via plugins.allow or install records";
-    params.registry.diagnostics.push({
-      level: "warn",
-      pluginId: plugin.id,
-      source: plugin.source,
-      message,
-    });
-    params.logger.warn(
-      `[plugins] ${plugin.id}: ${message} (${safeRealpathOrResolve(plugin.source)})`,
-    );
-  }
 }
