@@ -32,10 +32,16 @@ import {
   fetchMessageDiscord,
   fetchReactionsDiscord,
   fetchRoleInfoDiscord,
+  fetchChannelInfoDiscord,
   getThreadBindingManager,
   listDiscordDirectoryGroupsLive,
   listDiscordDirectoryPeersLive,
   listThreadBindingsBySessionKey,
+  listGuildChannelsDiscord,
+  listGuildEmojisDiscord,
+  listPinsDiscord,
+  listScheduledEventsDiscord,
+  listThreadsDiscord,
   moveChannelDiscord,
   pinMessageDiscord,
   reactMessageDiscord,
@@ -62,6 +68,8 @@ import {
   unbindThreadBindingsBySessionKey,
   uploadEmojiDiscord,
   uploadStickerDiscord,
+  readMessagesDiscord,
+  searchMessagesDiscord,
 } from "../../extensions/discord/runtime-api.js";
 import { normalizeExplicitDiscordSessionKey } from "../../extensions/discord/session-key-api.js";
 import type {
@@ -82,21 +90,13 @@ import {
 import {
   DISCORD_DEFAULT_INBOUND_WORKER_TIMEOUT_MS,
   DISCORD_DEFAULT_LISTENER_TIMEOUT_MS,
-  fetchChannelInfoDiscord,
   fetchVoiceStatusDiscord,
   getGateway,
   getPresence,
   hasAnyGuildPermissionDiscord,
   kickMemberDiscord,
-  listGuildChannelsDiscord,
-  listGuildEmojisDiscord,
-  listPinsDiscord,
-  listScheduledEventsDiscord,
-  listThreadsDiscord,
   monitorDiscordProvider,
   probeDiscord,
-  readMessagesDiscord,
-  searchMessagesDiscord,
   unpinMessageDiscord,
 } from "../channels/discord/plugin-sdk-bridge.js";
 
