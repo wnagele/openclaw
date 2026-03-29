@@ -127,9 +127,11 @@ describe("Matrix inbound event dedupe", () => {
 
   it("persists per-room event watermarks for startup backlog fencing", async () => {
     const storagePath = createStoragePath();
+    let now = 200;
     const first = await createMatrixInboundEventDeduper({
       auth: auth as never,
       storagePath,
+      nowMs: () => now,
     });
 
     expect(first.claimEvent({ roomId: "!room:example.org", eventId: "$newer" })).toBe(true);
@@ -140,9 +142,11 @@ describe("Matrix inbound event dedupe", () => {
     });
     await first.stop();
 
+    now = 210;
     const second = await createMatrixInboundEventDeduper({
       auth: auth as never,
       storagePath,
+      nowMs: () => now,
     });
 
     expect(
@@ -163,6 +167,155 @@ describe("Matrix inbound event dedupe", () => {
         eventTs: 199,
       }),
     ).toBe(false);
+  });
+
+  it("ignores implausibly future room watermarks when loading persisted state", async () => {
+    const storagePath = createStoragePath();
+    fs.writeFileSync(
+      storagePath,
+      JSON.stringify({
+        version: 2,
+        entries: [],
+        roomWatermarks: [{ roomId: "!future:example.org", eventTs: 1_011 }],
+      }),
+      "utf8",
+    );
+
+    const deduper = await createMatrixInboundEventDeduper({
+      auth: auth as never,
+      storagePath,
+      nowMs: () => 1_000,
+      maxFutureEventTsSkewMs: 10,
+    });
+
+    expect(
+      deduper.isOlderThanCommittedWatermark({
+        roomId: "!future:example.org",
+        eventTs: 1_000,
+      }),
+    ).toBe(false);
+  });
+
+  it("persists room watermarks that are within the allowed future skew", async () => {
+    const storagePath = createStoragePath();
+    const first = await createMatrixInboundEventDeduper({
+      auth: auth as never,
+      storagePath,
+      nowMs: () => 1_000,
+      maxFutureEventTsSkewMs: 10,
+    });
+
+    expect(first.claimEvent({ roomId: "!room:example.org", eventId: "$future-ok" })).toBe(true);
+    await first.commitEvent({
+      roomId: "!room:example.org",
+      eventId: "$future-ok",
+      eventTs: 1_010,
+    });
+    await first.stop();
+
+    const second = await createMatrixInboundEventDeduper({
+      auth: auth as never,
+      storagePath,
+      nowMs: () => 1_000,
+      maxFutureEventTsSkewMs: 10,
+    });
+
+    expect(
+      second.isOlderThanCommittedWatermark({
+        roomId: "!room:example.org",
+        eventTs: 1_009,
+      }),
+    ).toBe(true);
+  });
+
+  it("prunes expired and overflowed room watermarks on load", async () => {
+    const storagePath = createStoragePath();
+    fs.writeFileSync(
+      storagePath,
+      JSON.stringify({
+        version: 2,
+        entries: [],
+        roomWatermarks: [
+          { roomId: "!expired:example.org", eventTs: 10 },
+          { roomId: "!keep-1:example.org", eventTs: 90 },
+          { roomId: "!keep-2:example.org", eventTs: 95 },
+          { roomId: "!keep-3:example.org", eventTs: 100 },
+        ],
+      }),
+      "utf8",
+    );
+
+    const deduper = await createMatrixInboundEventDeduper({
+      auth: auth as never,
+      storagePath,
+      ttlMs: 20,
+      maxRoomWatermarks: 2,
+      nowMs: () => 100,
+    });
+
+    expect(
+      deduper.isOlderThanCommittedWatermark({
+        roomId: "!expired:example.org",
+        eventTs: 0,
+      }),
+    ).toBe(false);
+    expect(
+      deduper.isOlderThanCommittedWatermark({
+        roomId: "!keep-1:example.org",
+        eventTs: 89,
+      }),
+    ).toBe(false);
+    expect(
+      deduper.isOlderThanCommittedWatermark({
+        roomId: "!keep-2:example.org",
+        eventTs: 94,
+      }),
+    ).toBe(true);
+    expect(
+      deduper.isOlderThanCommittedWatermark({
+        roomId: "!keep-3:example.org",
+        eventTs: 99,
+      }),
+    ).toBe(true);
+  });
+
+  it("bounds persisted room watermarks after overflow", async () => {
+    const storagePath = createStoragePath();
+    const deduper = await createMatrixInboundEventDeduper({
+      auth: auth as never,
+      storagePath,
+      maxRoomWatermarks: 2,
+      ttlMs: 1_000,
+      nowMs: () => 1_000,
+    });
+
+    expect(deduper.claimEvent({ roomId: "!room-1:example.org", eventId: "$event-1" })).toBe(true);
+    await deduper.commitEvent({
+      roomId: "!room-1:example.org",
+      eventId: "$event-1",
+      eventTs: 100,
+    });
+    expect(deduper.claimEvent({ roomId: "!room-2:example.org", eventId: "$event-2" })).toBe(true);
+    await deduper.commitEvent({
+      roomId: "!room-2:example.org",
+      eventId: "$event-2",
+      eventTs: 200,
+    });
+    expect(deduper.claimEvent({ roomId: "!room-3:example.org", eventId: "$event-3" })).toBe(true);
+    await deduper.commitEvent({
+      roomId: "!room-3:example.org",
+      eventId: "$event-3",
+      eventTs: 300,
+    });
+    await deduper.stop();
+
+    const stored = JSON.parse(fs.readFileSync(storagePath, "utf8")) as {
+      roomWatermarks?: Array<{ roomId: string }>;
+    };
+    expect(stored.roomWatermarks?.map((entry) => entry.roomId)).toEqual([
+      "!room-2:example.org",
+      "!room-3:example.org",
+    ]);
   });
 
   it("loads legacy v1 stores without requiring room watermarks", async () => {
