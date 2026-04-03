@@ -64,9 +64,9 @@ export function acquireLocalHeavyCheckLockSync(params) {
     return () => {};
   }
 
-  const commonDir = resolveGitCommonDir(params.cwd);
-  const locksDir = path.join(commonDir, "openclaw-local-checks");
-  const lockDir = path.join(locksDir, `${params.lockName ?? "heavy-check"}.lock`);
+  const locksDir = resolveLocalHeavyChecksDir(params.cwd);
+  const lockName = params.lockName ?? "heavy-check";
+  const lockDir = path.join(locksDir, `${lockName}.lock`);
   const ownerPath = path.join(lockDir, "owner.json");
   const timeoutMs = readPositiveInt(
     env.OPENCLAW_HEAVY_CHECK_LOCK_TIMEOUT_MS,
@@ -79,15 +79,21 @@ export function acquireLocalHeavyCheckLockSync(params) {
   );
   const startedAt = Date.now();
   let waitingLogged = false;
+  let waiterStateWritten = false;
 
   fs.mkdirSync(locksDir, { recursive: true });
 
   for (;;) {
     try {
       fs.mkdirSync(lockDir);
+      if (waiterStateWritten) {
+        cleanupWaiterState(lockDir, process.pid);
+        waiterStateWritten = false;
+      }
       writeOwnerFile(ownerPath, {
         pid: process.pid,
         tool: params.toolName,
+        lockName,
         cwd: params.cwd,
         hostname: os.hostname(),
         createdAt: new Date().toISOString(),
@@ -103,11 +109,25 @@ export function acquireLocalHeavyCheckLockSync(params) {
       const owner = readOwnerFile(ownerPath);
       if (shouldReclaimLock({ owner, lockDir, staleLockMs })) {
         fs.rmSync(lockDir, { recursive: true, force: true });
+        waiterStateWritten = false;
         continue;
       }
 
+      writeWaiterState(lockDir, {
+        pid: process.pid,
+        tool: params.toolName,
+        lockName,
+        cwd: params.cwd,
+        hostname: os.hostname(),
+        createdAt: new Date(startedAt).toISOString(),
+        ownerPid: owner && typeof owner.pid === "number" ? owner.pid : null,
+        ownerTool: owner && typeof owner.tool === "string" ? owner.tool : null,
+      });
+      waiterStateWritten = true;
+
       const elapsedMs = Date.now() - startedAt;
       if (elapsedMs >= timeoutMs) {
+        cleanupWaiterState(lockDir, process.pid);
         const ownerLabel = describeOwner(owner);
         throw new Error(
           `[${params.toolName}] timed out waiting for the local heavy-check lock at ${lockDir}${
@@ -130,6 +150,46 @@ export function acquireLocalHeavyCheckLockSync(params) {
       sleepSync(pollMs);
     }
   }
+}
+
+export function resolveLocalHeavyChecksDir(cwd) {
+  return path.join(resolveGitCommonDir(cwd), "openclaw-local-checks");
+}
+
+export function listLocalHeavyChecks(cwd, env = process.env) {
+  const locksDir = resolveLocalHeavyChecksDir(cwd);
+  const staleLockMs = readPositiveInt(
+    env.OPENCLAW_HEAVY_CHECK_STALE_LOCK_MS,
+    DEFAULT_STALE_LOCK_MS,
+  );
+
+  let entries = [];
+  try {
+    entries = fs
+      .readdirSync(locksDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && entry.name.endsWith(".lock"));
+  } catch {
+    return [];
+  }
+
+  return entries
+    .map((entry) => {
+      const lockDir = path.join(locksDir, entry.name);
+      const owner = readOwnerFile(path.join(lockDir, "owner.json"));
+      const waiters = readWaiterStates(lockDir).map((waiter) => ({
+        ...waiter,
+        alive: typeof waiter.pid === "number" ? isProcessAlive(waiter.pid) : false,
+      }));
+      return {
+        lockName: entry.name.replace(/\.lock$/u, ""),
+        lockDir,
+        owner,
+        ownerAlive: owner && typeof owner.pid === "number" ? isProcessAlive(owner.pid) : false,
+        stale: shouldReclaimLock({ owner, lockDir, staleLockMs }),
+        waiters,
+      };
+    })
+    .toSorted((left, right) => left.lockName.localeCompare(right.lockName));
 }
 
 export function resolveGitCommonDir(cwd) {
@@ -168,12 +228,46 @@ function writeOwnerFile(ownerPath, owner) {
   fs.writeFileSync(ownerPath, `${JSON.stringify(owner, null, 2)}\n`, "utf8");
 }
 
+function writeWaiterState(lockDir, waiter) {
+  const waitersDir = path.join(lockDir, "waiters");
+  fs.mkdirSync(waitersDir, { recursive: true });
+  writeOwnerFile(path.join(waitersDir, `${process.pid}.json`), waiter);
+}
+
+function cleanupWaiterState(lockDir, pid) {
+  const waitersDir = path.join(lockDir, "waiters");
+  const waiterPath = path.join(waitersDir, `${pid}.json`);
+  fs.rmSync(waiterPath, { force: true });
+  try {
+    if (fs.readdirSync(waitersDir).length === 0) {
+      fs.rmdirSync(waitersDir);
+    }
+  } catch {
+    // Ignore cleanup failures for concurrent waiters.
+  }
+}
+
 function readOwnerFile(ownerPath) {
   try {
     return JSON.parse(fs.readFileSync(ownerPath, "utf8"));
   } catch {
     return null;
   }
+}
+
+function readWaiterStates(lockDir) {
+  const waitersDir = path.join(lockDir, "waiters");
+  let entries = [];
+  try {
+    entries = fs.readdirSync(waitersDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  return entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
+    .map((entry) => readOwnerFile(path.join(waitersDir, entry.name)))
+    .filter(Boolean);
 }
 
 function isAlreadyExistsError(error) {
