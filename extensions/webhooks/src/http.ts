@@ -120,7 +120,7 @@ const runTaskRequestSchema = z
   .object({
     action: z.literal("run_task"),
     flowId: z.string().trim().min(1),
-    runtime: z.enum(["subagent", "acp", "cli", "cron"]),
+    runtime: z.enum(["subagent", "acp"]),
     sourceId: z.string().trim().min(1).optional(),
     childSessionKey: z.string().trim().min(1).optional(),
     parentTaskId: z.string().trim().min(1).optional(),
@@ -130,22 +130,27 @@ const runTaskRequestSchema = z
     task: z.string().trim().min(1),
     preferMetadata: z.boolean().optional(),
     notifyPolicy: z.enum(["done_only", "state_changes", "silent"]).optional(),
-    deliveryStatus: z
-      .enum([
-        "pending",
-        "delivered",
-        "session_queued",
-        "failed",
-        "parent_missing",
-        "not_applicable",
-      ])
-      .optional(),
     status: z.enum(["queued", "running"]).optional(),
     startedAt: z.number().int().nonnegative().optional(),
     lastEventAt: z.number().int().nonnegative().optional(),
     progressSummary: nullableStringSchema,
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    if (
+      value.status !== "running" &&
+      (value.startedAt !== undefined ||
+        value.lastEventAt !== undefined ||
+        value.progressSummary !== undefined)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "status must be running when startedAt, lastEventAt, or progressSummary is provided",
+        path: ["status"],
+      });
+    }
+  });
 
 const webhookActionSchema = z.discriminatedUnion("action", [
   createFlowRequestSchema,
@@ -366,6 +371,165 @@ function mapMutationResult(
   return result;
 }
 
+function mapMutationStatus(result: {
+  applied: boolean;
+  code?: "not_found" | "not_managed" | "revision_conflict";
+}): { statusCode: number; code?: string; error?: string } {
+  if (result.applied) {
+    return { statusCode: 200 };
+  }
+  switch (result.code) {
+    case "not_found":
+      return {
+        statusCode: 404,
+        code: "not_found",
+        error: "TaskFlow not found.",
+      };
+    case "not_managed":
+      return {
+        statusCode: 409,
+        code: "not_managed",
+        error: "TaskFlow is not managed by this webhook surface.",
+      };
+    case "revision_conflict":
+      return {
+        statusCode: 409,
+        code: "revision_conflict",
+        error: "TaskFlow changed since the caller's expected revision.",
+      };
+    default:
+      return {
+        statusCode: 409,
+        code: "mutation_rejected",
+        error: "TaskFlow mutation was rejected.",
+      };
+  }
+}
+
+function mapRunTaskStatus(result: { created: boolean; found: boolean; reason?: string }): {
+  statusCode: number;
+  code?: string;
+  error?: string;
+} {
+  if (result.created) {
+    return { statusCode: 200 };
+  }
+  if (!result.found) {
+    return {
+      statusCode: 404,
+      code: "not_found",
+      error: "TaskFlow not found.",
+    };
+  }
+  if (result.reason === "Flow cancellation has already been requested.") {
+    return {
+      statusCode: 409,
+      code: "cancel_requested",
+      error: result.reason,
+    };
+  }
+  if (result.reason === "Flow does not accept managed child tasks.") {
+    return {
+      statusCode: 409,
+      code: "not_managed",
+      error: result.reason,
+    };
+  }
+  if (result.reason?.startsWith("Flow is already ")) {
+    return {
+      statusCode: 409,
+      code: "terminal",
+      error: result.reason,
+    };
+  }
+  return {
+    statusCode: 409,
+    code: "task_not_created",
+    error: result.reason ?? "TaskFlow task was not created.",
+  };
+}
+
+function mapCancelStatus(result: { found: boolean; cancelled: boolean; reason?: string }): {
+  statusCode: number;
+  code?: string;
+  error?: string;
+} {
+  if (result.cancelled) {
+    return { statusCode: 200 };
+  }
+  if (!result.found) {
+    return {
+      statusCode: 404,
+      code: "not_found",
+      error: "TaskFlow not found.",
+    };
+  }
+  if (result.reason === "One or more child tasks are still active.") {
+    return {
+      statusCode: 202,
+      code: "cancel_pending",
+      error: result.reason,
+    };
+  }
+  if (result.reason === "Flow changed while cancellation was in progress.") {
+    return {
+      statusCode: 409,
+      code: "revision_conflict",
+      error: result.reason,
+    };
+  }
+  if (result.reason?.startsWith("Flow is already ")) {
+    return {
+      statusCode: 409,
+      code: "terminal",
+      error: result.reason,
+    };
+  }
+  return {
+    statusCode: 409,
+    code: "cancel_rejected",
+    error: result.reason ?? "TaskFlow cancellation was rejected.",
+  };
+}
+
+function describeWebhookOutcome(params: { action: WebhookAction; result: unknown }): {
+  statusCode: number;
+  code?: string;
+  error?: string;
+} {
+  switch (params.action.action) {
+    case "set_waiting":
+    case "resume_flow":
+    case "finish_flow":
+    case "fail_flow":
+    case "request_cancel":
+      return mapMutationStatus(
+        params.result as {
+          applied: boolean;
+          code?: "not_found" | "not_managed" | "revision_conflict";
+        },
+      );
+    case "cancel_flow":
+      return mapCancelStatus(
+        params.result as {
+          found: boolean;
+          cancelled: boolean;
+          reason?: string;
+        },
+      );
+    case "run_task":
+      return mapRunTaskStatus(
+        params.result as {
+          created: boolean;
+          found: boolean;
+          reason?: string;
+        },
+      );
+    default:
+      return { statusCode: 200 };
+  }
+}
+
 async function executeWebhookAction(params: {
   action: WebhookAction;
   target: TaskFlowWebhookTarget;
@@ -514,7 +678,6 @@ async function executeWebhookAction(params: {
         task: action.task,
         preferMetadata: action.preferMetadata,
         notifyPolicy: action.notifyPolicy,
-        deliveryStatus: action.deliveryStatus,
         status: action.status,
         startedAt: action.startedAt,
         lastEventAt: action.lastEventAt,
@@ -613,11 +776,28 @@ export function createTaskFlowWebhookRequestHandler(params: {
           target,
           cfg: params.cfg,
         });
-        writeJson(res, 200, {
-          ok: true,
-          routeId: target.routeId,
+        const outcome = describeWebhookOutcome({
+          action: parsed.data,
           result,
         });
+        writeJson(
+          res,
+          outcome.statusCode,
+          outcome.statusCode < 400
+            ? {
+                ok: true,
+                routeId: target.routeId,
+                ...(outcome.code ? { code: outcome.code } : {}),
+                result,
+              }
+            : {
+                ok: false,
+                routeId: target.routeId,
+                code: outcome.code ?? "request_rejected",
+                error: outcome.error ?? "request rejected",
+                result,
+              },
+        );
         return true;
       },
     });
