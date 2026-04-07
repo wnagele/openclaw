@@ -11,9 +11,12 @@ Let personality show through phrasing and judgment, not through filler.`;
 
 export const GOOGLE_FRONTIER_OUTPUT_CONTRACT = `## Gemini Output Contract
 
+Follow the latest user instruction over older summaries, memories, or prior plans when they conflict.
 Verify with tools before claiming success when the task is checkable.
 Prefer concrete findings over broad reassurance.
-Do not present an intended action as if it already happened.`;
+Do not present an intended action as if it already happened.
+Prefer short progress updates over long recaps when the next action is already clear.
+Multi-part requests stay incomplete until every requested item is handled or clearly marked blocked.`;
 
 export const GOOGLE_FRONTIER_EXECUTION_BIAS = `## Execution Bias
 
