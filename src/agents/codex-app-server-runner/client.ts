@@ -1,4 +1,4 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn } from "node:child_process";
 import { createInterface, type Interface as ReadlineInterface } from "node:readline";
 import { log } from "../pi-embedded-runner/logger.js";
 import {
@@ -18,6 +18,15 @@ type PendingRequest = {
   reject: (error: Error) => void;
 };
 
+type CodexAppServerTransport = {
+  stdin: { write: (data: string) => unknown };
+  stdout: NodeJS.ReadableStream;
+  stderr: NodeJS.ReadableStream;
+  killed?: boolean;
+  kill?: () => unknown;
+  once: (event: string, listener: (...args: unknown[]) => void) => unknown;
+};
+
 export type CodexServerRequestHandler = (
   request: Required<Pick<RpcRequest, "id" | "method">> & { params?: JsonValue },
 ) => Promise<JsonValue | undefined> | JsonValue | undefined;
@@ -27,7 +36,7 @@ export type CodexServerNotificationHandler = (
 ) => Promise<void> | void;
 
 export class CodexAppServerClient {
-  private readonly child: ChildProcessWithoutNullStreams;
+  private readonly child: CodexAppServerTransport;
   private readonly lines: ReadlineInterface;
   private readonly pending = new Map<number | string, PendingRequest>();
   private readonly requestHandlers = new Set<CodexServerRequestHandler>();
@@ -36,20 +45,24 @@ export class CodexAppServerClient {
   private initialized = false;
   private closed = false;
 
-  private constructor(child: ChildProcessWithoutNullStreams) {
+  private constructor(child: CodexAppServerTransport) {
     this.child = child;
     this.lines = createInterface({ input: child.stdout });
     this.lines.on("line", (line) => this.handleLine(line));
-    child.stderr.on("data", (chunk: Buffer) => {
+    child.stderr.on("data", (chunk: Buffer | string) => {
       const text = chunk.toString("utf8").trim();
       if (text) {
         log.debug(`codex app-server stderr: ${text}`);
       }
     });
-    child.once("error", (error) => this.closeWithError(error));
+    child.once("error", (error) =>
+      this.closeWithError(error instanceof Error ? error : new Error(String(error))),
+    );
     child.once("exit", (code, signal) => {
       this.closeWithError(
-        new Error(`codex app-server exited: code=${code ?? "null"} signal=${signal ?? "null"}`),
+        new Error(
+          `codex app-server exited: code=${formatExitValue(code)} signal=${formatExitValue(signal)}`,
+        ),
       );
     });
   }
@@ -62,6 +75,10 @@ export class CodexAppServerClient {
       env: process.env,
       stdio: ["pipe", "pipe", "pipe"],
     });
+    return new CodexAppServerClient(child);
+  }
+
+  static fromTransportForTests(child: CodexAppServerTransport): CodexAppServerClient {
     return new CodexAppServerClient(child);
   }
 
@@ -116,7 +133,7 @@ export class CodexAppServerClient {
     this.closed = true;
     this.lines.close();
     if (!this.child.killed) {
-      this.child.kill();
+      this.child.kill?.();
     }
   }
 
@@ -299,6 +316,16 @@ function splitShellWords(value: string): string[] {
     words.push(current);
   }
   return words;
+}
+
+function formatExitValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return "null";
+  }
+  if (typeof value === "string" || typeof value === "number") {
+    return String(value);
+  }
+  return "unknown";
 }
 
 export function jsonObjectFromUnknown(value: unknown): JsonObject | undefined {

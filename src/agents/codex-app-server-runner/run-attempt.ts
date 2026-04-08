@@ -16,7 +16,7 @@ import { clearActiveEmbeddedRun, setActiveEmbeddedRun } from "../pi-embedded-run
 import { normalizeProviderToolSchemas } from "../pi-embedded-runner/tool-schema-runtime.js";
 import { createOpenClawCodingTools } from "../pi-tools.js";
 import { resolveSandboxContext } from "../sandbox.js";
-import { getSharedCodexAppServerClient } from "./client.js";
+import { getSharedCodexAppServerClient, type CodexAppServerClient } from "./client.js";
 import { createCodexDynamicToolBridge } from "./dynamic-tools.js";
 import { CodexAppServerEventProjector } from "./event-projector.js";
 import {
@@ -35,6 +35,11 @@ import {
   writeCodexAppServerBinding,
   type CodexAppServerThreadBinding,
 } from "./session-binding.js";
+import { mirrorCodexAppServerTranscript } from "./transcript-mirror.js";
+
+type CodexAppServerClientFactory = () => Promise<CodexAppServerClient>;
+
+let clientFactory: CodexAppServerClientFactory = getSharedCodexAppServerClient;
 
 export async function runCodexAppServerAttempt(
   params: EmbeddedRunAttemptParams,
@@ -81,8 +86,9 @@ export async function runCodexAppServerAttempt(
     tools,
     signal: runAbortController.signal,
   });
-  const client = await getSharedCodexAppServerClient();
+  const client = await clientFactory();
   const thread = await startOrResumeThread({
+    client,
     params,
     cwd: effectiveWorkspace,
     dynamicTools: toolBridge.specs,
@@ -165,6 +171,10 @@ export async function runCodexAppServerAttempt(
   try {
     await completion;
     const result = projector.buildResult(toolBridge.telemetry);
+    await mirrorTranscriptBestEffort({
+      params,
+      result,
+    });
     return {
       ...result,
       timedOut,
@@ -271,15 +281,15 @@ async function buildDynamicTools(input: DynamicToolBuildParams) {
 }
 
 async function startOrResumeThread(params: {
+  client: CodexAppServerClient;
   params: EmbeddedRunAttemptParams;
   cwd: string;
   dynamicTools: JsonValue[];
 }): Promise<CodexAppServerThreadBinding> {
-  const client = await getSharedCodexAppServerClient();
   const binding = await readCodexAppServerBinding(params.params.sessionFile);
   if (binding?.threadId) {
     try {
-      const response = await client.request<CodexThreadResumeResponse>("thread/resume", {
+      const response = await params.client.request<CodexThreadResumeResponse>("thread/resume", {
         threadId: binding.threadId,
       });
       await writeCodexAppServerBinding(params.params.sessionFile, {
@@ -302,7 +312,7 @@ async function startOrResumeThread(params: {
     }
   }
 
-  const response = await client.request<CodexThreadStartResponse>("thread/start", {
+  const response = await params.client.request<CodexThreadStartResponse>("thread/start", {
     model: params.params.modelId,
     modelProvider: normalizeModelProvider(params.params.provider),
     cwd: params.cwd,
@@ -434,3 +444,27 @@ function readString(record: JsonObject, key: string): string | undefined {
   const value = record[key];
   return typeof value === "string" ? value : undefined;
 }
+
+async function mirrorTranscriptBestEffort(params: {
+  params: EmbeddedRunAttemptParams;
+  result: EmbeddedRunAttemptResult;
+}): Promise<void> {
+  try {
+    await mirrorCodexAppServerTranscript({
+      sessionFile: params.params.sessionFile,
+      sessionKey: params.params.sessionKey,
+      messages: params.result.messagesSnapshot,
+    });
+  } catch (error) {
+    log.warn("failed to mirror codex app-server transcript", { error });
+  }
+}
+
+export const __testing = {
+  setCodexAppServerClientFactoryForTests(factory: CodexAppServerClientFactory): void {
+    clientFactory = factory;
+  },
+  resetCodexAppServerClientFactoryForTests(): void {
+    clientFactory = getSharedCodexAppServerClient;
+  },
+} as const;

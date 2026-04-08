@@ -220,9 +220,9 @@ export type SessionEntry = {
 Do not overload `cliSessionBindings`. CLI session ids, ACP runtime metadata, and
 Codex app-server thread ids have different lifecycle semantics.
 
-Transcript mirror remains follow-up work. For now, app-server owns its Codex
-thread transcript and OpenClaw receives final attempt state for current-run
-payloads.
+OpenClaw mirrors the minimal user/assistant turn back into the existing PI
+JSONL transcript so session views, cost readers, and transcript-indexing hooks
+still see the Codex app-server path.
 
 ## App-Server Protocol Mapping
 
@@ -428,7 +428,7 @@ Add a config key later only after the env flag proves useful.
 - Add stdio JSON-RPC client.
 - Cover selector, event projection, and session binding.
 
-Done in the first implementation except for fake transport coverage.
+Done in the first implementation.
 
 ### Slice 1: Text-Only App-Server Attempt
 
@@ -451,8 +451,8 @@ Done with dynamic tools included.
 - Clear binding on reset.
 - Verify resume and `/new`.
 
-Sidecar thread persistence is done; transcript mirror and reset-aware clearing
-remain follow-up work.
+Done: sidecar thread persistence, minimal transcript mirror, and reset-aware
+binding clearing.
 
 ### Slice 3: Active Run Controls
 
@@ -462,7 +462,7 @@ remain follow-up work.
 - Preserve `waitForEmbeddedPiRunEnd`.
 - Add tests for queue/abort state.
 
-Runtime wiring is done; queue/abort tests remain follow-up work.
+Done with targeted queue and abort coverage.
 
 ### Slice 4: Event Projector Parity
 
@@ -487,12 +487,21 @@ Runtime wiring is done; queue/abort tests remain follow-up work.
   possible.
 - Decide which PI-specific tool-result truncation paths still apply.
 
+Manual compaction is wired through `thread/compact/start` when a Codex
+app-server thread binding exists. Overflow-specific recovery remains partial
+because app-server owns the native Codex history and exposes fewer PI-style
+transcript repair hooks.
+
 ### Slice 7: Default-On for Codex Provider
 
 - Use app-server automatically for the Codex provider.
 - Keep PI for non-Codex providers.
 - Keep env/config kill switch.
 - Add docs and release note only when user-facing behavior changes.
+
+Done: default runtime resolution is `auto`, which routes `openai-codex` attempts
+through app-server and falls back to PI on startup/runtime failure. Set
+`OPENCLAW_AGENT_RUNTIME=pi` to force the legacy PI backend.
 
 ### Slice 8: Retire PI from Codex Path
 
@@ -515,7 +524,7 @@ Runtime wiring is done; queue/abort tests remain follow-up work.
 | plugin tools              | no         | later          | depends on schema compatibility           |
 | queue steer               | yes        | yes            | `turn/steer`                              |
 | abort                     | yes        | yes            | `turn/interrupt`                          |
-| compaction                | partial    | yes            | `thread/compact/start`                    |
+| compaction                | yes        | yes            | `thread/compact/start`                    |
 | model fallback            | partial    | partial        | keep PI orchestration; Codex auth differs |
 | auth profile rotation     | no         | no             | app-server owns Codex auth                |
 | prompt cache metrics      | partial    | partial        | use app-server usage if exposed           |

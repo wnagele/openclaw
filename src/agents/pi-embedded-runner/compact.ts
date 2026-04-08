@@ -48,6 +48,7 @@ import {
   resolveChannelMessageToolHints,
   resolveChannelReactionGuidance,
 } from "../channel-tools.js";
+import { maybeCompactCodexAppServerSession } from "../codex-app-server-runner/compact.js";
 import {
   hasMeaningfulConversationContent,
   isRealConversationMessage,
@@ -1230,6 +1231,10 @@ export async function compactEmbeddedPiSessionDirect(
 export async function compactEmbeddedPiSession(
   params: CompactEmbeddedPiSessionParams,
 ): Promise<EmbeddedPiCompactResult> {
+  const codexResult = await maybeCompactCodexAppServerSession(params);
+  if (codexResult) {
+    return codexResult;
+  }
   const sessionLane = resolveSessionLane(params.sessionKey?.trim() || params.sessionId);
   const globalLane = resolveGlobalLane(params.lane);
   const enqueueGlobal =

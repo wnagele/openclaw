@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { resolveEmbeddedAgentRuntime } from "./backend.js";
+import { resolveEmbeddedAgentRuntime } from "../runtime.js";
 
 describe("resolveEmbeddedAgentRuntime", () => {
-  it("keeps the PI backend as the default", () => {
-    expect(resolveEmbeddedAgentRuntime({})).toBe("pi");
+  it("uses auto mode by default", () => {
+    expect(resolveEmbeddedAgentRuntime({})).toBe("auto");
+  });
+
+  it("accepts the PI kill switch", () => {
+    expect(resolveEmbeddedAgentRuntime({ OPENCLAW_AGENT_RUNTIME: "pi" })).toBe("pi");
   });
 
   it("accepts codex app-server aliases", () => {
