@@ -281,6 +281,39 @@ describe("active-memory plugin", () => {
     expect(infoLines.some((line: string) => line.includes(" cached "))).toBe(false);
   });
 
+  it("does not share cached recall results across session-id-only contexts", async () => {
+    api.pluginConfig = {
+      agents: ["main"],
+      logging: true,
+    };
+    plugin.register(api as unknown as OpenClawPluginApi);
+
+    await hooks.before_prompt_build(
+      { prompt: "what wings should i order? session id cache", messages: [] },
+      {
+        agentId: "main",
+        trigger: "user",
+        sessionId: "session-a",
+        messageProvider: "webchat",
+      },
+    );
+    await hooks.before_prompt_build(
+      { prompt: "what wings should i order? session id cache", messages: [] },
+      {
+        agentId: "main",
+        trigger: "user",
+        sessionId: "session-b",
+        messageProvider: "webchat",
+      },
+    );
+
+    expect(runEmbeddedPiAgent).toHaveBeenCalledTimes(2);
+    const infoLines = vi
+      .mocked(api.logger.info)
+      .mock.calls.map((call: unknown[]) => String(call[0]));
+    expect(infoLines.some((line: string) => line.includes(" cached "))).toBe(false);
+  });
+
   it("clears stale status on skipped non-interactive turns even when agentId is missing", async () => {
     const sessionKey = "agent:main:missing-agent";
     hoisted.sessionStore[sessionKey] = {
@@ -398,6 +431,34 @@ describe("active-memory plugin", () => {
     });
   });
 
+  it("filters candidates before applying max-memory truncation", async () => {
+    api.pluginConfig = {
+      agents: ["main"],
+      maxMemories: 1,
+    };
+    plugin.register(api as unknown as OpenClawPluginApi);
+    runEmbeddedPiAgent.mockResolvedValueOnce({
+      payloads: [{ text: "- unrelated preference\n- lemon pepper wings\n- blue cheese" }],
+    });
+
+    const result = await hooks.before_prompt_build(
+      { prompt: "what wings should i order?", messages: [] },
+      {
+        agentId: "main",
+        trigger: "user",
+        sessionKey: "agent:main:main",
+        messageProvider: "webchat",
+      },
+    );
+
+    expect(result).toEqual({
+      appendSystemContext: expect.stringContaining("lemon pepper wings"),
+    });
+    expect((result as { appendSystemContext: string }).appendSystemContext).not.toContain(
+      "unrelated preference",
+    );
+  });
+
   it("keeps sidecar transcripts off disk by default by using a temp session file", async () => {
     const mkdtempSpy = vi
       .spyOn(fs, "mkdtemp")
@@ -405,7 +466,7 @@ describe("active-memory plugin", () => {
     const rmSpy = vi.spyOn(fs, "rm").mockResolvedValue(undefined);
 
     await hooks.before_prompt_build(
-      { prompt: "what wings should i order?", messages: [] },
+      { prompt: "what wings should i order? temp transcript path", messages: [] },
       {
         agentId: "main",
         trigger: "user",
@@ -445,7 +506,7 @@ describe("active-memory plugin", () => {
     expect(mkdirSpy).toHaveBeenCalledWith("/tmp/active-memory-sidecars", { recursive: true });
     expect(mkdtempSpy).not.toHaveBeenCalled();
     expect(runEmbeddedPiAgent.mock.calls.at(-1)?.[0]?.sessionFile).toMatch(
-      /^\/tmp\/active-memory-sidecars\/active-memory-[a-z0-9]+\.jsonl$/,
+      /^\/tmp\/active-memory-sidecars\/active-memory-[a-z0-9]+-[a-f0-9]{8}\.jsonl$/,
     );
     expect(rmSpy).not.toHaveBeenCalled();
     expect(

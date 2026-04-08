@@ -269,9 +269,14 @@ function isEligibleInteractiveSession(ctx: {
   return Boolean(ctx.channelId && ctx.channelId.trim());
 }
 
-function buildCacheKey(params: { agentId: string; sessionKey?: string; query: string }): string {
+function buildCacheKey(params: {
+  agentId: string;
+  sessionKey?: string;
+  sessionId?: string;
+  query: string;
+}): string {
   const hash = crypto.createHash("sha1").update(params.query).digest("hex");
-  return `${params.agentId}:${params.sessionKey ?? "none"}:${hash}`;
+  return `${params.agentId}:${params.sessionKey ?? params.sessionId ?? "none"}:${hash}`;
 }
 
 function getCachedResult(cacheKey: string): ActiveRecallResult | undefined {
@@ -508,7 +513,7 @@ function filterWeakRecallCandidates(params: {
   }));
 }
 
-function parseRawReply(rawReply: string, maxMemories = DEFAULT_MAX_MEMORIES): string[] {
+function parseRawReply(rawReply: string): string[] {
   const trimmed = rawReply.trim();
   if (normalizeNoRecallValue(trimmed)) {
     return [];
@@ -528,9 +533,6 @@ function parseRawReply(rawReply: string, maxMemories = DEFAULT_MAX_MEMORIES): st
       continue;
     }
     memories.push(normalized);
-    if (memories.length >= maxMemories) {
-      break;
-    }
   }
   return memories;
 }
@@ -540,7 +542,7 @@ function toRecallCandidates(params: {
   query: string;
   config: ResolvedActiveRecallPluginConfig;
 }): ActiveRecallCandidate[] {
-  const parsed = parseRawReply(params.rawReply, params.config.maxMemories);
+  const parsed = parseRawReply(params.rawReply);
   if (parsed.length === 0) {
     return [];
   }
@@ -727,7 +729,7 @@ async function runRecallSidecar(params: {
     modelProviderId: params.currentModelProviderId,
     modelId: params.currentModelId,
   });
-  const sidecarSessionId = `active-memory-${Date.now().toString(36)}`;
+  const sidecarSessionId = `active-memory-${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
   const sidecarSessionKey = `active-memory:${params.agentId}:${crypto
     .createHash("sha1")
     .update(`${params.sessionKey ?? "none"}:${params.query}`)
@@ -815,6 +817,7 @@ async function maybeResolveActiveRecall(params: {
   config: ResolvedActiveRecallPluginConfig;
   agentId: string;
   sessionKey?: string;
+  sessionId?: string;
   query: string;
   currentModelProviderId?: string;
   currentModelId?: string;
@@ -823,6 +826,7 @@ async function maybeResolveActiveRecall(params: {
   const cacheKey = buildCacheKey({
     agentId: params.agentId,
     sessionKey: params.sessionKey,
+    sessionId: params.sessionId,
     query: params.query,
   });
   const cached = getCachedResult(cacheKey);
@@ -965,6 +969,7 @@ export default definePluginEntry({
         config,
         agentId: effectiveAgentId,
         sessionKey: ctx.sessionKey,
+        sessionId: ctx.sessionId,
         query,
         currentModelProviderId: ctx.modelProviderId,
         currentModelId: ctx.modelId,
