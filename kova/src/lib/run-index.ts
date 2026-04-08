@@ -17,6 +17,35 @@ const kovaRunIndexSchema = kovaRunArtifactSchema
     timing: true,
   })
   .extend({
+    scenario: kovaRunArtifactSchema.shape.scenario.default({
+      id: "unknown",
+      title: "Unknown scenario",
+      category: "unknown",
+      capabilities: [],
+    }),
+    classification: kovaRunArtifactSchema.shape.classification.default({
+      domain: "unknown",
+      reason: "legacy Kova run index entry",
+    }),
+    counts: kovaRunArtifactSchema.shape.counts.default({
+      total: 0,
+      passed: 0,
+      failed: 0,
+    }),
+    coverage: kovaRunArtifactSchema.shape.coverage.default({
+      scenarioIds: [],
+      capabilities: [],
+      capabilityAreas: [],
+      surfaces: [],
+    }),
+    execution: kovaRunArtifactSchema.shape.execution.default({
+      state: "planned",
+      availability: "unknown",
+      cleanup: {
+        status: "unknown",
+      },
+      paths: {},
+    }),
     updatedAt: kovaRunArtifactSchema.shape.timing.shape.finishedAt,
   });
 
@@ -45,10 +74,15 @@ export async function updateKovaRunIndex(repoRoot: string, artifact: KovaRunArti
   const nextEntry: KovaRunIndexEntry = {
     runId: artifact.runId,
     selection: artifact.selection,
+    scenario: artifact.scenario,
     backend: artifact.backend,
     verdict: artifact.verdict,
     status: artifact.status,
+    classification: artifact.classification,
     timing: artifact.timing,
+    counts: artifact.counts,
+    coverage: artifact.coverage,
+    execution: artifact.execution,
     updatedAt: artifact.timing.finishedAt,
   };
   const filteredRuns = current.runs.filter((entry) => entry.runId !== artifact.runId);
