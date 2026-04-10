@@ -581,6 +581,8 @@ export function handleControlUiHttpRequest(
       assistantAgentId: identity.agentId,
       serverVersion: resolveRuntimeServiceVersion(process.env),
       localMediaPreviewRoots: [...getDefaultLocalRoots()],
+      embedSandbox:
+        config?.gateway?.controlUi?.embedSandbox === "isolated" ? "isolated" : "powerful",
     } satisfies ControlUiBootstrapConfig);
     return true;
   }

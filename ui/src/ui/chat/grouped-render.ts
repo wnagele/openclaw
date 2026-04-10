@@ -2,6 +2,7 @@ import { html, nothing } from "lit";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { getSafeLocalStorage } from "../../local-storage.ts";
 import type { AssistantIdentity } from "../assistant-identity.ts";
+import type { EmbedSandboxMode } from "../embed-sandbox.ts";
 import { icons } from "../icons.ts";
 import { toSanitizedMarkdownHtml } from "../markdown.ts";
 import { openExternalUrlSafe } from "../open-external-url.ts";
@@ -156,6 +157,7 @@ export function renderMessageGroup(
     localMediaPreviewRoots?: readonly string[];
     assistantAttachmentAuthToken?: string | null;
     canvasHostUrl?: string | null;
+    embedSandboxMode?: EmbedSandboxMode;
     contextWindow?: number | null;
     onDelete?: () => void;
   },
@@ -216,6 +218,7 @@ export function renderMessageGroup(
               basePath: opts.basePath,
               localMediaPreviewRoots: opts.localMediaPreviewRoots,
               assistantAttachmentAuthToken: opts.assistantAttachmentAuthToken,
+              embedSandboxMode: opts.embedSandboxMode,
             },
             opts.onOpenSidebar,
           ),
@@ -893,6 +896,7 @@ function renderInlineToolCards(
     isToolExpanded?: (toolCardId: string) => boolean;
     onToggleToolExpanded?: (toolCardId: string) => void;
     canvasHostUrl?: string | null;
+    embedSandboxMode?: EmbedSandboxMode;
   },
 ) {
   return html`
@@ -905,6 +909,7 @@ function renderInlineToolCards(
             : () => undefined,
           onOpenSidebar: opts.onOpenSidebar,
           canvasHostUrl: opts.canvasHostUrl,
+          embedSandboxMode: opts.embedSandboxMode ?? "powerful",
         }),
       )}
     </div>
@@ -987,6 +992,7 @@ function renderGroupedMessage(
     basePath?: string;
     localMediaPreviewRoots?: readonly string[];
     assistantAttachmentAuthToken?: string | null;
+    embedSandboxMode?: EmbedSandboxMode;
   },
   onOpenSidebar?: (content: SidebarContent) => void,
 ) {
@@ -1136,6 +1142,7 @@ function renderGroupedMessage(
                               singleToolCard,
                               onOpenSidebar,
                               opts.canvasHostUrl,
+                              opts.embedSandboxMode ?? "powerful",
                             )
                           : renderInlineToolCards(toolCards, {
                               messageKey,
@@ -1143,6 +1150,7 @@ function renderGroupedMessage(
                               isToolExpanded: opts.isToolExpanded,
                               onToggleToolExpanded: opts.onToggleToolExpanded,
                               canvasHostUrl: opts.canvasHostUrl,
+                              embedSandboxMode: opts.embedSandboxMode ?? "powerful",
                             })
                         : nothing}
                     </div>
@@ -1170,6 +1178,7 @@ function renderGroupedMessage(
                     onOpenSidebar,
                     rawText: block.rawText ?? null,
                     canvasHostUrl: opts.canvasHostUrl,
+                    embedSandboxMode: opts.embedSandboxMode ?? "powerful",
                   })}
                   ${block.rawText ? renderRawOutputToggle(block.rawText) : nothing}`,
                 )}`
@@ -1194,6 +1203,7 @@ function renderGroupedMessage(
                   isToolExpanded: opts.isToolExpanded,
                   onToggleToolExpanded: opts.onToggleToolExpanded,
                   canvasHostUrl: opts.canvasHostUrl,
+                  embedSandboxMode: opts.embedSandboxMode ?? "powerful",
                 })
               : nothing}
           `}

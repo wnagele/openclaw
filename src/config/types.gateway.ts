@@ -85,6 +85,11 @@ export type GatewayControlUiConfig = {
   basePath?: string;
   /** Optional filesystem root for Control UI assets (defaults to dist/control-ui). */
   root?: string;
+  /**
+   * Embed sandbox mode for hosted Control UI previews.
+   * "powerful" keeps same-origin iframe behavior; "isolated" removes same-origin.
+   */
+  embedSandbox?: "powerful" | "isolated";
   /** Allowed browser origins for Control UI/WebChat websocket connections. */
   allowedOrigins?: string[];
   /**

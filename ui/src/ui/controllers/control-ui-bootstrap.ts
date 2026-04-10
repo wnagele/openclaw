@@ -1,6 +1,7 @@
 import {
   CONTROL_UI_BOOTSTRAP_CONFIG_PATH,
   type ControlUiBootstrapConfig,
+  type ControlUiEmbedSandboxMode,
 } from "../../../../src/gateway/control-ui-contract.js";
 import { normalizeAssistantIdentity } from "../assistant-identity.ts";
 import { normalizeBasePath } from "../navigation.ts";
@@ -12,6 +13,7 @@ export type ControlUiBootstrapState = {
   assistantAgentId: string | null;
   serverVersion: string | null;
   localMediaPreviewRoots: string[];
+  embedSandboxMode: ControlUiEmbedSandboxMode;
 };
 
 export async function loadControlUiBootstrapConfig(state: ControlUiBootstrapState) {
@@ -49,6 +51,7 @@ export async function loadControlUiBootstrapConfig(state: ControlUiBootstrapStat
     state.localMediaPreviewRoots = Array.isArray(parsed.localMediaPreviewRoots)
       ? parsed.localMediaPreviewRoots.filter((value): value is string => typeof value === "string")
       : [];
+    state.embedSandboxMode = parsed.embedSandbox === "isolated" ? "isolated" : "powerful";
   } catch {
     // Ignore bootstrap failures; UI will update identity after connecting.
   }

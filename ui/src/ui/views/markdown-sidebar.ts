@@ -1,12 +1,16 @@
 import { html, nothing } from "lit";
 import { unsafeHTML } from "lit/directives/unsafe-html.js";
 import { resolveCanvasIframeUrl } from "../canvas-url.ts";
+import { resolveEmbedSandbox, type EmbedSandboxMode } from "../embed-sandbox.ts";
 import { icons } from "../icons.ts";
 import { toSanitizedMarkdownHtml } from "../markdown.ts";
 import type { SidebarContent } from "../sidebar-content.ts";
 
-function resolveSidebarCanvasSandbox(content: SidebarContent): string {
-  return content.kind === "canvas" ? "allow-scripts allow-same-origin" : "allow-scripts";
+function resolveSidebarCanvasSandbox(
+  content: SidebarContent,
+  embedSandboxMode: EmbedSandboxMode,
+): string {
+  return content.kind === "canvas" ? resolveEmbedSandbox(embedSandboxMode) : "allow-scripts";
 }
 
 export type MarkdownSidebarProps = {
@@ -15,6 +19,7 @@ export type MarkdownSidebarProps = {
   onClose: () => void;
   onViewRawText: () => void;
   canvasHostUrl?: string | null;
+  embedSandboxMode?: EmbedSandboxMode;
 };
 
 export function renderMarkdownSidebar(props: MarkdownSidebarProps) {
@@ -43,7 +48,10 @@ export function renderMarkdownSidebar(props: MarkdownSidebarProps) {
                       <iframe
                         class="chat-tool-card__preview-frame"
                         title=${content.title?.trim() || "Render preview"}
-                        sandbox=${resolveSidebarCanvasSandbox(content)}
+                        sandbox=${resolveSidebarCanvasSandbox(
+                          content,
+                          props.embedSandboxMode ?? "powerful",
+                        )}
                         src=${resolveCanvasIframeUrl(content.entryUrl, props.canvasHostUrl) ??
                         nothing}
                         style=${content.preferredHeight

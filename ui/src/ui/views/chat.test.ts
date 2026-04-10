@@ -1719,6 +1719,52 @@ describe("chat view", () => {
     expect(container.textContent).toContain("Raw details");
   });
 
+  it("uses isolated embed sandbox mode when configured", () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          showToolCalls: false,
+          embedSandboxMode: "isolated",
+          messages: [
+            {
+              id: "assistant-canvas-isolated",
+              role: "assistant",
+              content: [{ type: "text", text: "Inline canvas result." }],
+              timestamp: Date.now(),
+            },
+          ],
+          toolMessages: [
+            {
+              id: "tool-artifact-inline-isolated",
+              role: "tool",
+              toolCallId: "call-artifact-inline-isolated",
+              toolName: "canvas_render",
+              content: JSON.stringify({
+                kind: "canvas",
+                view: {
+                  backend: "canvas",
+                  id: "cv_inline_isolated",
+                  url: "/__openclaw__/canvas/documents/cv_inline_isolated/index.html",
+                  title: "Inline demo",
+                  preferred_height: 360,
+                },
+                presentation: {
+                  target: "assistant_message",
+                },
+              }),
+              timestamp: Date.now() + 1,
+            },
+          ],
+        }),
+      ),
+      container,
+    );
+
+    const iframe = container.querySelector<HTMLIFrameElement>(".chat-tool-card__preview-frame");
+    expect(iframe?.getAttribute("sandbox")).toBe("allow-scripts");
+  });
+
   it("renders assistant_message canvas results in the assistant bubble even when tool rows are visible", () => {
     const container = document.createElement("div");
     render(

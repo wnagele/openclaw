@@ -1,6 +1,7 @@
 import { html, nothing } from "lit";
 import { extractCanvasFromText } from "../../../../src/chat/canvas-render.js";
 import { resolveCanvasIframeUrl } from "../canvas-url.ts";
+import { resolveEmbedSandbox, type EmbedSandboxMode } from "../embed-sandbox.ts";
 import { icons } from "../icons.ts";
 import type { SidebarContent } from "../sidebar-content.ts";
 import { formatToolDetail, resolveToolDisplay } from "../tool-display.ts";
@@ -12,10 +13,7 @@ import { formatToolOutputForSidebar, getTruncatedPreview } from "./tool-helpers.
 export type ToolPreview = NonNullable<ToolCard["preview"]>;
 
 function resolveCanvasPreviewSandbox(preview: ToolPreview): string {
-  if (preview.kind === "canvas") {
-    return "allow-scripts allow-same-origin";
-  }
-  return "allow-scripts allow-same-origin";
+  return resolveEmbedSandbox(preview.kind === "canvas" ? "powerful" : "powerful");
 }
 
 function normalizeContent(content: unknown): Array<Record<string, unknown>> {
@@ -272,6 +270,7 @@ export function renderToolPreview(
     onOpenSidebar?: (content: SidebarContent) => void;
     rawText?: string | null;
     canvasHostUrl?: string | null;
+    embedSandboxMode?: EmbedSandboxMode;
   },
 ) {
   if (!preview) {
@@ -293,7 +292,10 @@ export function renderToolPreview(
           title: preview.title?.trim() || "Canvas",
           src: resolveCanvasIframeUrl(preview.url, options?.canvasHostUrl),
           height: preview.preferredHeight,
-          sandbox: resolveCanvasPreviewSandbox(preview),
+          sandbox:
+            preview.kind === "canvas"
+              ? resolveEmbedSandbox(options?.embedSandboxMode ?? "powerful")
+              : resolveCanvasPreviewSandbox(preview),
         })}
       </div>
     </div>
@@ -399,6 +401,7 @@ export function renderToolCard(
     onToggleExpanded: (id: string) => void;
     onOpenSidebar?: (content: SidebarContent) => void;
     canvasHostUrl?: string | null;
+    embedSandboxMode?: EmbedSandboxMode;
   },
 ) {
   const hasOutput = Boolean(card.outputText?.trim());
@@ -419,7 +422,12 @@ export function renderToolCard(
       ${opts.expanded
         ? html`
             <div class="chat-tool-msg-body">
-              ${renderExpandedToolCardContent(card, opts.onOpenSidebar, opts.canvasHostUrl)}
+              ${renderExpandedToolCardContent(
+                card,
+                opts.onOpenSidebar,
+                opts.canvasHostUrl,
+                opts.embedSandboxMode ?? "powerful",
+              )}
             </div>
           `
         : nothing}
@@ -431,6 +439,7 @@ export function renderExpandedToolCardContent(
   card: ToolCard,
   onOpenSidebar?: (content: SidebarContent) => void,
   canvasHostUrl?: string | null,
+  embedSandboxMode: EmbedSandboxMode = "powerful",
 ) {
   const display = resolveToolDisplay({ name: card.name, args: card.args });
   const detail = formatToolDetail(display);
@@ -448,6 +457,7 @@ export function renderExpandedToolCardContent(
         onOpenSidebar,
         rawText: card.outputText,
         canvasHostUrl,
+        embedSandboxMode,
       })
     : nothing;
 
@@ -499,11 +509,13 @@ export function renderToolCardSidebar(
   card: ToolCard,
   onOpenSidebar?: (content: SidebarContent) => void,
   canvasHostUrl?: string | null,
+  embedSandboxMode: EmbedSandboxMode = "powerful",
 ) {
   return renderToolCard(card, {
     expanded: false,
     onToggleExpanded: () => undefined,
     onOpenSidebar,
     canvasHostUrl,
+    embedSandboxMode,
   });
 }

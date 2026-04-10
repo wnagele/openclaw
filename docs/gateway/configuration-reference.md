@@ -2859,6 +2859,7 @@ See [Plugins](/tools/plugin).
       enabled: true,
       basePath: "/openclaw",
       // root: "dist/control-ui",
+      // embedSandbox: "powerful", // powerful | isolated
       // allowedOrigins: ["https://control.example.com"], // required for non-loopback Control UI
       // dangerouslyAllowHostHeaderOriginFallback: false, // dangerous Host-header origin fallback mode
       // allowInsecureAuth: false,

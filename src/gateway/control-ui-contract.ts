@@ -1,5 +1,7 @@
 export const CONTROL_UI_BOOTSTRAP_CONFIG_PATH = "/__openclaw/control-ui-config.json";
 
+export type ControlUiEmbedSandboxMode = "powerful" | "isolated";
+
 export type ControlUiBootstrapConfig = {
   basePath: string;
   assistantName: string;
@@ -7,4 +9,5 @@ export type ControlUiBootstrapConfig = {
   assistantAgentId: string;
   serverVersion?: string;
   localMediaPreviewRoots?: string[];
+  embedSandbox?: ControlUiEmbedSandboxMode;
 };

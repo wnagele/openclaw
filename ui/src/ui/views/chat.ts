@@ -38,6 +38,7 @@ import {
 } from "../chat/slash-commands.ts";
 import { isSttSupported, startStt, stopStt } from "../chat/speech.ts";
 import { buildSidebarContent, extractToolCards, extractToolPreview } from "../chat/tool-cards.ts";
+import type { EmbedSandboxMode } from "../embed-sandbox.ts";
 import { icons } from "../icons.ts";
 import { toSanitizedMarkdownHtml } from "../markdown.ts";
 import type { SidebarContent } from "../sidebar-content.ts";
@@ -96,6 +97,7 @@ export type ChatProps = {
   sidebarError?: string | null;
   splitRatio?: number;
   canvasHostUrl?: string | null;
+  embedSandboxMode?: EmbedSandboxMode;
   assistantName: string;
   assistantAvatar: string | null;
   localMediaPreviewRoots?: string[];
@@ -1293,6 +1295,7 @@ export function renderChat(props: ChatProps) {
                 localMediaPreviewRoots: props.localMediaPreviewRoots ?? [],
                 assistantAttachmentAuthToken: props.assistantAttachmentAuthToken ?? null,
                 canvasHostUrl: props.canvasHostUrl,
+                embedSandboxMode: props.embedSandboxMode ?? "powerful",
                 contextWindow:
                   activeSession?.contextTokens ?? props.sessions?.defaults?.contextTokens ?? null,
                 onDelete: () => {
@@ -1474,6 +1477,7 @@ export function renderChat(props: ChatProps) {
                   content: props.sidebarContent ?? null,
                   error: props.sidebarError ?? null,
                   canvasHostUrl: props.canvasHostUrl,
+                  embedSandboxMode: props.embedSandboxMode ?? "powerful",
                   onClose: props.onCloseSidebar!,
                   onViewRawText: () => {
                     if (!props.sidebarContent || !props.onOpenSidebar) {
