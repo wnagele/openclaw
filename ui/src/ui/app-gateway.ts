@@ -36,7 +36,6 @@ import {
   parseExecApprovalRequested,
   parseExecApprovalResolved,
   parsePluginApprovalRequested,
-  pruneExecApprovalQueue,
   removeExecApproval,
 } from "./controllers/exec-approval.ts";
 import { loadHealthState, type HealthState } from "./controllers/health.ts";
@@ -50,7 +49,6 @@ import {
 import { GatewayBrowserClient } from "./gateway.ts";
 import type { Tab } from "./navigation.ts";
 import type { UiSettings } from "./storage.ts";
-import { normalizeOptionalString } from "./string-coerce.ts";
 import type {
   AgentsListResult,
   PresenceEntry,
@@ -130,7 +128,7 @@ export function resolveControlUiClientVersion(params: {
   serverVersion: string | null;
   pageUrl?: string;
 }): string | undefined {
-  const serverVersion = normalizeOptionalString(params.serverVersion);
+  const serverVersion = params.serverVersion?.trim();
   if (!serverVersion) {
     return undefined;
   }
@@ -156,16 +154,16 @@ function normalizeSessionKeyForDefaults(
   value: string | undefined,
   defaults: SessionDefaultsSnapshot,
 ): string {
-  const raw = normalizeOptionalString(value) ?? "";
-  const mainSessionKey = normalizeOptionalString(defaults.mainSessionKey);
+  const raw = (value ?? "").trim();
+  const mainSessionKey = defaults.mainSessionKey?.trim();
   if (!mainSessionKey) {
     return raw;
   }
   if (!raw) {
     return mainSessionKey;
   }
-  const mainKey = normalizeOptionalString(defaults.mainKey) ?? "main";
-  const defaultAgentId = normalizeOptionalString(defaults.defaultAgentId);
+  const mainKey = defaults.mainKey?.trim() || "main";
+  const defaultAgentId = defaults.defaultAgentId?.trim();
   const isAlias =
     raw === "main" ||
     raw === mainKey ||
@@ -214,8 +212,6 @@ export function connectGateway(host: GatewayHost, options?: ConnectGatewayOption
   host.hello = null;
   host.connected = false;
   if (reconnectReason === "seq-gap") {
-    // A seq gap means the socket stayed on the same gateway; preserve prompts
-    // that only arrived as ephemeral events and clear stale run-scoped indicators.
     host.execApprovalQueue = pruneExecApprovalQueue(host.execApprovalQueue);
     clearPendingQueueItemsForRun(
       host as unknown as Parameters<typeof clearPendingQueueItemsForRun>[0],
@@ -223,8 +219,6 @@ export function connectGateway(host: GatewayHost, options?: ConnectGatewayOption
     );
     shutdownHost.resumeChatQueueAfterReconnect = true;
   } else {
-    // Preserve any still-live approvals that were already staged in UI state.
-    // Initial connect can happen after a soft reload while an approval is pending.
     host.execApprovalQueue = pruneExecApprovalQueue(host.execApprovalQueue);
   }
   host.execApprovalError = null;
@@ -236,8 +230,8 @@ export function connectGateway(host: GatewayHost, options?: ConnectGatewayOption
   });
   const client = new GatewayBrowserClient({
     url: host.settings.gatewayUrl,
-    token: normalizeOptionalString(host.settings.token) ? host.settings.token : undefined,
-    password: normalizeOptionalString(host.password) ? host.password : undefined,
+    token: host.settings.token.trim() ? host.settings.token : undefined,
+    password: host.password.trim() ? host.password : undefined,
     clientName: "openclaw-control-ui",
     clientVersion,
     mode: "webchat",
@@ -342,12 +336,12 @@ function handleTerminalChatEvent(
   // Check if tool events were seen before resetting (resetToolStream clears toolStreamOrder).
   const toolHost = host as unknown as Parameters<typeof resetToolStream>[0];
   const hadToolEvents = toolHost.toolStreamOrder.length > 0;
-  resetToolStream(toolHost);
+  const flushQueue = () =>
+    void flushChatQueueForEvent(host as unknown as Parameters<typeof flushChatQueueForEvent>[0]);
   clearPendingQueueItemsForRun(
     host as unknown as Parameters<typeof clearPendingQueueItemsForRun>[0],
     payload?.runId,
   );
-  void flushChatQueueForEvent(host as unknown as Parameters<typeof flushChatQueueForEvent>[0]);
   const runId = payload?.runId;
   if (runId && host.refreshSessionsAfterChat.has(runId)) {
     host.refreshSessionsAfterChat.delete(runId);
@@ -360,9 +354,18 @@ function handleTerminalChatEvent(
   // Reload history when tools were used so the persisted tool results
   // replace the now-cleared streaming state.
   if (hadToolEvents && state === "final") {
-    void loadChatHistory(host as unknown as ChatState);
+    const completedRunId = runId ?? null;
+    void loadChatHistory(host as unknown as ChatState).finally(() => {
+      if (completedRunId && host.chatRunId && host.chatRunId !== completedRunId) {
+        return;
+      }
+      resetToolStream(toolHost);
+      flushQueue();
+    });
     return true;
   }
+  resetToolStream(toolHost);
+  flushQueue();
   return false;
 }
 
@@ -437,7 +440,10 @@ function handleGatewayEventUnsafe(host: GatewayHost, evt: GatewayEventFrame) {
 
   if (evt.event === "shutdown") {
     const payload = evt.payload as { reason?: unknown; restartExpectedMs?: unknown } | undefined;
-    const reason = normalizeOptionalString(payload?.reason) ?? "gateway stopping";
+    const reason =
+      payload && typeof payload.reason === "string" && payload.reason.trim()
+        ? payload.reason.trim()
+        : "gateway stopping";
     const shutdownMessage =
       typeof payload?.restartExpectedMs === "number"
         ? `Restarting: ${reason}`
