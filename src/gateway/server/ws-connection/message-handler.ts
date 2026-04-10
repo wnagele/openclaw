@@ -81,6 +81,7 @@ import {
   incrementPresenceVersion,
   refreshGatewayHealthSnapshot,
 } from "../health-state.js";
+import { resolveSharedGatewaySessionGeneration } from "../ws-shared-generation.js";
 import type { GatewayWsClient } from "../ws-types.js";
 import { resolveConnectAuthDecision, resolveConnectAuthState } from "./auth-context.js";
 import { formatGatewayAuthFailureMessage } from "./auth-messages.js";
@@ -1061,6 +1062,10 @@ export function attachGatewayWsMessageHandler(params: {
         const canvasCapabilityExpiresAtMs = canvasCapability
           ? Date.now() + CANVAS_CAPABILITY_TTL_MS
           : undefined;
+        const usesSharedGatewayAuth = authMethod === "token" || authMethod === "password";
+        const sharedGatewaySessionGeneration = usesSharedGatewayAuth
+          ? resolveSharedGatewaySessionGeneration(resolvedAuth)
+          : undefined;
         const scopedCanvasHostUrl =
           canvasHostUrl && canvasCapability
             ? (buildCanvasScopedHostUrl(canvasHostUrl, canvasCapability) ?? canvasHostUrl)
@@ -1095,6 +1100,8 @@ export function attachGatewayWsMessageHandler(params: {
           socket,
           connect: connectParams,
           connId,
+          usesSharedGatewayAuth,
+          sharedGatewaySessionGeneration,
           presenceKey,
           clientIp: reportedClientIp,
           canvasHostUrl,

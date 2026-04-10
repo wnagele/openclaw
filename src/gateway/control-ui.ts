@@ -7,7 +7,7 @@ import {
   isPackageProvenControlUiRootSync,
   resolveControlUiRootSync,
 } from "../infra/control-ui-assets.js";
-import { openLocalFileSafely, readLocalFileSafely, SafeOpenError } from "../infra/fs-safe.js";
+import { openLocalFileSafely, SafeOpenError } from "../infra/fs-safe.js";
 import { safeFileURLToPath } from "../infra/local-file-access.js";
 import { isWithinDir } from "../infra/path-safety.js";
 import { openVerifiedFileSync } from "../infra/safe-open-sync.js";
@@ -259,7 +259,8 @@ async function resolveAssistantMediaAvailability(
 ): Promise<AssistantMediaAvailability> {
   try {
     await assertLocalMediaAllowed(source, getDefaultLocalRoots());
-    await readLocalFileSafely({ filePath: source });
+    const opened = await openLocalFileSafely({ filePath: source });
+    await opened.handle.close();
     return { available: true };
   } catch (err) {
     return classifyAssistantMediaError(err);
