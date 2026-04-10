@@ -702,7 +702,8 @@ function resolveAssistantAttachmentAvailability(
   if (!isLocalAttachmentPreviewAllowed(source, localMediaPreviewRoots)) {
     return { status: "unavailable", reason: "Outside allowed folders" };
   }
-  const cacheKey = `${basePath ?? ""}::${source}`;
+  const normalizedAuthToken = authToken?.trim() ?? "";
+  const cacheKey = `${basePath ?? ""}::${normalizedAuthToken}::${source}`;
   const cached = assistantAttachmentAvailabilityCache.get(cacheKey);
   if (cached) {
     return cached;

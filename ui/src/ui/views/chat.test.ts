@@ -1771,6 +1771,62 @@ describe("chat view", () => {
     expect(container.textContent).toContain("Inline demo");
   });
 
+  it("keeps lifted canvas previews attached to the nearest assistant turn", () => {
+    const container = document.createElement("div");
+    render(
+      renderChat(
+        createProps({
+          showToolCalls: true,
+          messages: [
+            {
+              id: "assistant-with-canvas",
+              role: "assistant",
+              content: [{ type: "text", text: "First reply." }],
+              timestamp: 1_000,
+            },
+            {
+              id: "assistant-without-canvas",
+              role: "assistant",
+              content: [{ type: "text", text: "Later unrelated reply." }],
+              timestamp: 2_000,
+            },
+          ],
+          toolMessages: [
+            {
+              id: "tool-canvas-for-first-reply",
+              role: "tool",
+              toolCallId: "call-canvas-old",
+              toolName: "canvas_render",
+              content: JSON.stringify({
+                kind: "canvas",
+                view: {
+                  backend: "canvas",
+                  id: "cv_nearest_turn",
+                  url: "/__openclaw__/canvas/documents/cv_nearest_turn/index.html",
+                  title: "Nearest turn demo",
+                  preferred_height: 320,
+                },
+                presentation: {
+                  target: "assistant_message",
+                },
+              }),
+              timestamp: 1_001,
+            },
+          ],
+        }),
+      ),
+      container,
+    );
+
+    const assistantBubbles = Array.from(
+      container.querySelectorAll<HTMLElement>(".chat-group.assistant .chat-bubble"),
+    );
+    expect(assistantBubbles).toHaveLength(2);
+    expect(assistantBubbles[0]?.querySelector(".chat-tool-card__preview-frame")).not.toBeNull();
+    expect(assistantBubbles[1]?.querySelector(".chat-tool-card__preview-frame")).toBeNull();
+    expect(assistantBubbles[1]?.textContent).toContain("Later unrelated reply.");
+  });
+
   it("does not auto-render generic view handles from non-canvas payloads", () => {
     const container = document.createElement("div");
     render(
@@ -1913,6 +1969,69 @@ describe("chat view", () => {
       "/openclaw/__openclaw__/assistant-media?source=%2Ftmp%2Fopenclaw%2Ftest-doc.pdf&token=session-token",
     );
     expect(container.textContent).not.toContain("test image.png");
+    vi.unstubAllGlobals();
+  });
+
+  it("rechecks local assistant attachment availability when the auth token changes", async () => {
+    resetAssistantAttachmentAvailabilityCacheForTest();
+    const fetchMock = vi.fn(async (url: string) => {
+      if (!url.includes("meta=1")) {
+        throw new Error(`Unexpected fetch: ${url}`);
+      }
+      return {
+        ok: true,
+        json: async () => ({ available: url.includes("token=fresh-token") }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    const container = document.createElement("div");
+
+    const renderWithToken = (token: string | null) =>
+      render(
+        renderChat(
+          createProps({
+            showToolCalls: false,
+            basePath: "/openclaw",
+            assistantAttachmentAuthToken: token,
+            localMediaPreviewRoots: ["/tmp/openclaw"],
+            onRequestUpdate: () => renderWithToken(token),
+            messages: [
+              {
+                id: "assistant-local-media-auth-refresh",
+                role: "assistant",
+                content: "Local image\nMEDIA:/tmp/openclaw/test image.png",
+                timestamp: Date.now(),
+              },
+            ],
+          }),
+        ),
+        container,
+      );
+
+    renderWithToken(null);
+    await Promise.resolve();
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(container.textContent).toContain("Unavailable");
+
+    renderWithToken("fresh-token");
+    await Promise.resolve();
+    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "/openclaw/__openclaw__/assistant-media?source=%2Ftmp%2Fopenclaw%2Ftest+image.png&meta=1",
+      expect.objectContaining({ credentials: "same-origin", method: "GET" }),
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "/openclaw/__openclaw__/assistant-media?source=%2Ftmp%2Fopenclaw%2Ftest+image.png&token=fresh-token&meta=1",
+      expect.objectContaining({ credentials: "same-origin", method: "GET" }),
+    );
+    expect(container.querySelector(".chat-message-image")).not.toBeNull();
+    expect(container.textContent).not.toContain("Unavailable");
     vi.unstubAllGlobals();
   });
 
