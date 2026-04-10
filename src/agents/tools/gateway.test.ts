@@ -4,34 +4,30 @@ const callGatewayMock = vi.fn();
 const configState = vi.hoisted(() => ({
   value: {} as Record<string, unknown>,
 }));
+type BuildGatewayConnectionDetailsArgs = { config?: Record<string, unknown> };
 const buildGatewayConnectionDetailsMock = vi.fn(
-  ({ config }: { config?: Record<string, unknown> } = {}) => {
+  ({ config }: BuildGatewayConnectionDetailsArgs = {}) => {
     const cfg = config ?? {};
+    const gateway =
+      cfg.gateway && typeof cfg.gateway === "object"
+        ? (cfg.gateway as { mode?: unknown; remote?: { url?: unknown } })
+        : undefined;
     const envUrl = process.env.OPENCLAW_GATEWAY_URL?.trim();
     if (envUrl) {
       return { url: envUrl, urlSource: "env OPENCLAW_GATEWAY_URL" };
     }
     const remoteUrl =
-      cfg.gateway &&
-      typeof cfg.gateway === "object" &&
-      cfg.gateway.mode === "remote" &&
-      cfg.gateway.remote &&
-      typeof cfg.gateway.remote === "object" &&
-      typeof cfg.gateway.remote.url === "string" &&
-      cfg.gateway.remote.url.trim()
-        ? cfg.gateway.remote.url.trim()
+      gateway?.mode === "remote" &&
+      typeof gateway.remote?.url === "string" &&
+      gateway.remote.url.trim()
+        ? gateway.remote.url.trim()
         : undefined;
     if (remoteUrl) {
       return { url: remoteUrl, urlSource: "config gateway.remote.url" };
     }
     const fallbackLocal =
-      cfg.gateway &&
-      typeof cfg.gateway === "object" &&
-      cfg.gateway.mode === "remote" &&
-      (!cfg.gateway.remote ||
-        typeof cfg.gateway.remote !== "object" ||
-        typeof cfg.gateway.remote.url !== "string" ||
-        !cfg.gateway.remote.url.trim());
+      gateway?.mode === "remote" &&
+      (typeof gateway.remote?.url !== "string" || !gateway.remote.url.trim());
     return {
       url: "ws://127.0.0.1:18789",
       urlSource: fallbackLocal ? "missing gateway.remote.url (fallback local)" : "local loopback",
@@ -43,7 +39,8 @@ vi.mock("../../config/config.js", () => ({
   resolveGatewayPort: () => 18789,
 }));
 vi.mock("../../gateway/call.js", () => ({
-  buildGatewayConnectionDetails: (...args: unknown[]) => buildGatewayConnectionDetailsMock(...args),
+  buildGatewayConnectionDetails: (args?: BuildGatewayConnectionDetailsArgs) =>
+    buildGatewayConnectionDetailsMock(args),
   callGateway: (...args: unknown[]) => callGatewayMock(...args),
 }));
 vi.mock("../../gateway/net.js", async () => await import("../../gateway/net.ts"));
@@ -222,28 +219,28 @@ describe("gateway tool defaults", () => {
     expect(isRemoteGatewayTargetForAgentTools({ config: configState.value })).toBe(true);
   });
 
-  it("treats OPENCLAW_GATEWAY_URL pointing to loopback as local when mode is not remote", () => {
+  it("treats OPENCLAW_GATEWAY_URL loopback targets as remote for mutation guards", () => {
     process.env.OPENCLAW_GATEWAY_URL = "ws://127.0.0.1:18789";
 
-    expect(isRemoteGatewayTargetForAgentTools({ config: configState.value })).toBe(false);
+    expect(isRemoteGatewayTargetForAgentTools({ config: configState.value })).toBe(true);
   });
 
-  it("treats non-canonical IPv4 loopback env targets as local when mode is not remote", () => {
+  it("treats non-canonical IPv4 loopback env targets as remote for mutation guards", () => {
     process.env.OPENCLAW_GATEWAY_URL = "ws://127.0.0.2:18789";
 
-    expect(isRemoteGatewayTargetForAgentTools({ config: configState.value })).toBe(false);
+    expect(isRemoteGatewayTargetForAgentTools({ config: configState.value })).toBe(true);
   });
 
-  it("treats IPv4-mapped IPv6 loopback env targets as local when mode is not remote", () => {
+  it("treats IPv4-mapped IPv6 loopback env targets as remote for mutation guards", () => {
     process.env.OPENCLAW_GATEWAY_URL = "ws://[::ffff:127.0.0.1]:18789";
 
-    expect(isRemoteGatewayTargetForAgentTools({ config: configState.value })).toBe(false);
+    expect(isRemoteGatewayTargetForAgentTools({ config: configState.value })).toBe(true);
   });
 
-  it("treats localhost env targets with a trailing dot as local when mode is not remote", () => {
+  it("treats localhost env targets with a trailing dot as remote for mutation guards", () => {
     process.env.OPENCLAW_GATEWAY_URL = "ws://localhost.:18789";
 
-    expect(isRemoteGatewayTargetForAgentTools({ config: configState.value })).toBe(false);
+    expect(isRemoteGatewayTargetForAgentTools({ config: configState.value })).toBe(true);
   });
 
   it("treats OPENCLAW_GATEWAY_URL pointing to loopback as remote when mode=remote (tunneled gateway)", () => {

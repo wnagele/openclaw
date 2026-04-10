@@ -375,14 +375,20 @@ function assertGatewayConfigMutationAllowed(params: {
   }
   // Load config fresh (not captured opts.config) so gateway.mode changes during a session are seen.
   if (isRemoteGatewayTargetForAgentTools({ gatewayUrl: params.gatewayUrl })) {
-    // Check all plugin activation-related paths: entries, global enabled, allow/deny lists.
-    // Any of these can activate plugins with dangerous host-specific config on a remote gateway.
+    // Block all generic plugin activation surfaces for remote targets. Remote gateways may have
+    // plugin contracts that are absent locally, so the local dangerous-flag scanner cannot safely
+    // reason about activation changes that happen through explicit enablement or auto-enable.
     const REMOTE_PLUGIN_ACTIVATION_PATHS = [
       "plugins.entries",
       "plugins.enabled",
       "plugins.allow",
       "plugins.deny",
       "plugins.slots",
+      "auth.profiles",
+      "models.providers",
+      "agents.defaults",
+      "agents.list",
+      "tools.web.fetch.provider",
       // plugins.load.paths introduces new plugin manifests on the remote host; local contract
       // discovery cannot evaluate their dangerous flags, so block load-path changes remotely.
       "plugins.load",

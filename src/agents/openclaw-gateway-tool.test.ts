@@ -679,6 +679,14 @@ describe("gateway tool", () => {
     ["plugins.allow", '{ plugins: { allow: ["acpx"] } }'],
     ["plugins.deny", '{ plugins: { deny: ["acpx"] } }'],
     ["plugins.slots", '{ plugins: { slots: { memory: "acpx" } } }'],
+    [
+      "auth.profiles",
+      '{ auth: { profiles: { primary: { provider: "openai", mode: "api-key" } } } }',
+    ],
+    ["models.providers", '{ models: { providers: { openai: { apiKey: "test-key" } } } }'],
+    ["agents.defaults", '{ agents: { defaults: { model: "openai/gpt-5.4" } } }'],
+    ["agents.list", '{ agents: { list: [{ id: "remote-agent", model: "openai/gpt-5.4" }] } }'],
+    ["tools.web.fetch.provider", '{ tools: { web: { fetch: { provider: "firecrawl" } } } }'],
     ["plugins.load", '{ plugins: { load: { paths: ["/extra/plugins"] } } }'],
     ["channels", "{ channels: { telegram: { enabled: true } } }"],
   ])("rejects remote config.patch that changes plugin activation via %s", async (_label, raw) => {
