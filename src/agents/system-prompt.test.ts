@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
 import { typedCases } from "../test-utils/typed-cases.js";
 import { buildSubagentSystemPrompt } from "./subagent-system-prompt.js";
-import { SYSTEM_PROMPT_CACHE_BOUNDARY } from "./system-prompt-cache-boundary.js";
 import { buildAgentSystemPrompt, buildRuntimeLine } from "./system-prompt.js";
 
 describe("buildAgentSystemPrompt", () => {
@@ -164,10 +163,10 @@ describe("buildAgentSystemPrompt", () => {
       workspaceDir: "/tmp/openclaw",
     });
 
-    expect(prompt).toContain("## Reply Tags");
+    expect(prompt).toContain("## Assistant Output Directives");
     expect(prompt).toContain("[[reply_to_current]]");
     expect(prompt).not.toContain("Tags are stripped before sending");
-    expect(prompt).toContain("Tags are removed before sending");
+    expect(prompt).toContain("Supported tags are stripped before user-visible rendering");
   });
 
   it("omits the heartbeat section when no heartbeat prompt is provided", () => {
@@ -237,16 +236,16 @@ describe("buildAgentSystemPrompt", () => {
     expect(prompt).toContain("do not forward raw internal metadata");
   });
 
-  it("does not include canvas guidance in the default global prompt", () => {
+  it("does not include embed guidance in the default global prompt", () => {
     const prompt = buildAgentSystemPrompt({
       workspaceDir: "/tmp/openclaw",
     });
 
-    expect(prompt).not.toContain("## Control UI Canvas");
-    expect(prompt).not.toContain("Use `[canvas ...]` only in Control UI/webchat sessions");
+    expect(prompt).not.toContain("## Control UI Embed");
+    expect(prompt).not.toContain("Use `[embed ...]` only in Control UI/webchat sessions");
   });
 
-  it("includes canvas guidance only for webchat sessions", () => {
+  it("includes embed guidance only for webchat sessions", () => {
     const prompt = buildAgentSystemPrompt({
       workspaceDir: "/tmp/openclaw",
       runtimeInfo: {
@@ -255,19 +254,19 @@ describe("buildAgentSystemPrompt", () => {
       },
     });
 
-    expect(prompt).toContain("## Control UI Canvas");
-    expect(prompt).toContain("Use `[canvas ...]` only in Control UI/webchat sessions");
-    expect(prompt).toContain('[canvas ref="cv_123" title="Status" height="320" /]');
+    expect(prompt).toContain("## Control UI Embed");
+    expect(prompt).toContain("Use `[embed ...]` only in Control UI/webchat sessions");
+    expect(prompt).toContain('[embed ref="cv_123" title="Status" height="320" /]');
     expect(prompt).toContain(
-      '[canvas url="/__openclaw__/canvas/documents/cv_123/index.html" title="Status" height="320" /]',
+      '[embed url="/__openclaw__/canvas/documents/cv_123/index.html" title="Status" height="320" /]',
     );
     expect(prompt).toContain(
-      "Never use local filesystem paths or `file://...` URLs in `[canvas ...]`.",
+      "Never use local filesystem paths or `file://...` URLs in `[embed ...]`.",
     );
     expect(prompt).toContain(
-      "The active hosted canvas root for this session is: `/Users/example/.openclaw-dev/canvas`.",
+      "The active hosted embed root for this session is: `/Users/example/.openclaw-dev/canvas`.",
     );
-    expect(prompt).not.toContain('[canvas content_type="html" title="Status"]...[/canvas]');
+    expect(prompt).not.toContain('[embed content_type="html" title="Status"]...[/embed]');
   });
 
   it("guides subagent workflows to avoid polling loops", () => {

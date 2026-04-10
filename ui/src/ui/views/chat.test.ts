@@ -1614,7 +1614,7 @@ describe("chat view", () => {
     expect(container.textContent).toContain("Tool output");
   });
 
-  it("renders [canvas] shortcodes inside the assistant bubble", () => {
+  it("renders [embed] shortcodes inside the assistant bubble", () => {
     const container = document.createElement("div");
     render(
       renderChat(
@@ -1627,7 +1627,7 @@ describe("chat view", () => {
               content: [
                 {
                   type: "text",
-                  text: 'Still the same current card.\n[canvas ref="cv_shortcode" title="Shortcode view" /]',
+                  text: 'Still the same current card.\n[embed ref="cv_shortcode" title="Shortcode view" /]',
                 },
               ],
               timestamp: Date.now(),
@@ -1653,9 +1653,7 @@ describe("chat view", () => {
             {
               id: "assistant-canvas-only",
               role: "assistant",
-              content: [
-                { type: "text", text: '[canvas ref="cv_tictactoe" title="Tic-Tac-Toe" /]' },
-              ],
+              content: [{ type: "text", text: '[embed ref="cv_tictactoe" title="Tic-Tac-Toe" /]' }],
               timestamp: Date.now(),
             },
           ],

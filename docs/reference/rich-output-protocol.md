@@ -5,28 +5,28 @@ Assistant output can carry a small set of delivery/render directives:
 - `MEDIA:` for attachment delivery
 - `[[audio_as_voice]]` for audio presentation hints
 - `[[reply_to_current]]` / `[[reply_to:<id>]]` for reply metadata
-- `[canvas ...]` for Control UI rich rendering
+- `[embed ...]` for Control UI rich rendering
 
-These directives are separate. `MEDIA:` and reply/voice tags remain delivery metadata; `[canvas ...]` is the web-only rich render path.
+These directives are separate. `MEDIA:` and reply/voice tags remain delivery metadata; `[embed ...]` is the web-only rich render path.
 
-## `[canvas ...]`
+## `[embed ...]`
 
-`[canvas ...]` is the only agent-facing rich render syntax for the Control UI.
+`[embed ...]` is the only agent-facing rich render syntax for the Control UI.
 
 Self-closing example:
 
 ```text
-[canvas ref="cv_123" title="Status" /]
+[embed ref="cv_123" title="Status" /]
 ```
 
 Rules:
 
 - `[view ...]` is no longer valid for new output.
-- Canvas shortcodes render in the assistant message surface only.
-- Only URL-backed canvases are rendered. Use `ref="..."` or `url="..."`.
-- Block-form inline HTML canvas shortcodes are not rendered.
-- The web UI strips the shortcode from visible text and renders the canvas inline.
-- `MEDIA:` is not a canvas alias and should not be used for rich canvas rendering.
+- Embed shortcodes render in the assistant message surface only.
+- Only URL-backed embeds are rendered. Use `ref="..."` or `url="..."`.
+- Block-form inline HTML embed shortcodes are not rendered.
+- The web UI strips the shortcode from visible text and renders the embed inline.
+- `MEDIA:` is not an embed alias and should not be used for rich embed rendering.
 
 ## Stored Rendering Shape
 

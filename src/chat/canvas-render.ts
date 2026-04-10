@@ -190,7 +190,7 @@ export function extractCanvasShortcodes(text: string | undefined): {
   text: string;
   previews: CanvasPreview[];
 } {
-  if (!text?.trim() || !text.includes("[canvas")) {
+  if (!text?.trim() || !text.includes("[embed")) {
     return { text: text ?? "", previews: [] };
   }
   const fenceSpans = parseFenceSpans(text);
@@ -200,8 +200,8 @@ export function extractCanvasShortcodes(text: string | undefined): {
     attrs: Record<string, string>;
     body?: string;
   }> = [];
-  const blockRe = /\[canvas\s+([^\]]*?)\]([\s\S]*?)\[\/canvas\]/gi;
-  const selfClosingRe = /\[canvas\s+([^\]]*?)\/\]/gi;
+  const blockRe = /\[embed\s+([^\]]*?)\]([\s\S]*?)\[\/embed\]/gi;
+  const selfClosingRe = /\[embed\s+([^\]]*?)\/\]/gi;
   for (const re of [blockRe, selfClosingRe]) {
     let match: RegExpExecArray | null;
     while ((match = re.exec(text))) {

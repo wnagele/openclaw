@@ -68,10 +68,10 @@ describe("message-normalizer", () => {
       expect(result.content).toEqual([{ type: "text", text: "Alternative format" }]);
     });
 
-    it("expands [canvas] shortcodes into canvas blocks", () => {
+    it("expands [embed] shortcodes into canvas blocks", () => {
       const result = normalizeMessage({
         role: "assistant",
-        content: 'Here.\n[canvas ref="cv_status" title="Status" height="320" /]',
+        content: 'Here.\n[embed ref="cv_status" title="Status" height="320" /]',
       });
 
       expect(result.content).toEqual([
@@ -92,30 +92,30 @@ describe("message-normalizer", () => {
       ]);
     });
 
-    it("ignores [canvas] shortcodes inside fenced code blocks", () => {
+    it("ignores [embed] shortcodes inside fenced code blocks", () => {
       const result = normalizeMessage({
         role: "assistant",
-        content: '```text\n[canvas ref="cv_status" /]\n```',
+        content: '```text\n[embed ref="cv_status" /]\n```',
       });
 
       expect(result.content).toEqual([
         {
           type: "text",
-          text: '```text\n[canvas ref="cv_status" /]\n```',
+          text: '```text\n[embed ref="cv_status" /]\n```',
         },
       ]);
     });
 
-    it("leaves block-form inline html canvas shortcodes as plain text", () => {
+    it("leaves block-form inline html embed shortcodes as plain text", () => {
       const result = normalizeMessage({
         role: "assistant",
-        content: '[canvas content_type="html" title="Status"]\n<div>Ready</div>\n[/canvas]',
+        content: '[embed content_type="html" title="Status"]\n<div>Ready</div>\n[/embed]',
       });
 
       expect(result.content).toEqual([
         {
           type: "text",
-          text: '[canvas content_type="html" title="Status"]\n<div>Ready</div>\n[/canvas]',
+          text: '[embed content_type="html" title="Status"]\n<div>Ready</div>\n[/embed]',
         },
       ]);
     });

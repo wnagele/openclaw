@@ -3,11 +3,13 @@ import type { ReasoningLevel, ThinkLevel } from "../auto-reply/thinking.js";
 import { SILENT_REPLY_TOKEN } from "../auto-reply/tokens.js";
 import type { MemoryCitationsMode } from "../config/types.memory.js";
 import { buildMemoryPromptSection } from "../plugins/memory-state.js";
+import { normalizeLowercaseStringOrEmpty } from "../shared/string-coerce.js";
 import { listDeliverableMessageChannels } from "../utils/message-channel.js";
 import type { ResolvedTimeFormat } from "./date-time.js";
 import type { EmbeddedContextFile } from "./pi-embedded-helpers.js";
 import type { EmbeddedSandboxInfo } from "./pi-embedded-runner/types.js";
 import { sanitizeForPromptLiteral } from "./sanitize-for-prompt.js";
+import { SYSTEM_PROMPT_CACHE_BOUNDARY } from "./system-prompt-cache-boundary.js";
 
 /**
  * Controls which hardcoded sections are included in the system prompt.
@@ -214,17 +216,17 @@ function buildWebchatCanvasSection(params: {
     return [];
   }
   return [
-    "## Control UI Canvas",
-    "Use `[canvas ...]` only in Control UI/webchat sessions for inline rich rendering inside the assistant bubble.",
-    "- Do not use `[canvas ...]` for non-web channels.",
-    "- `[canvas ...]` is separate from `MEDIA:`. Use `MEDIA:` for attachments; use `[canvas ...]` for web-only rich rendering.",
-    '- Use self-closing form for hosted canvas documents: `[canvas ref="cv_123" title="Status" height="320" /]`.',
-    '- You may also use an explicit hosted URL: `[canvas url="/__openclaw__/canvas/documents/cv_123/index.html" title="Status" height="320" /]`.',
-    '- Never use local filesystem paths or `file://...` URLs in `[canvas ...]`. Web canvases must point at hosted `/__openclaw__/canvas/...` URLs or use `ref="..."`.',
+    "## Control UI Embed",
+    "Use `[embed ...]` only in Control UI/webchat sessions for inline rich rendering inside the assistant bubble.",
+    "- Do not use `[embed ...]` for non-web channels.",
+    "- `[embed ...]` is separate from `MEDIA:`. Use `MEDIA:` for attachments; use `[embed ...]` for web-only rich rendering.",
+    '- Use self-closing form for hosted embed documents: `[embed ref="cv_123" title="Status" height="320" /]`.',
+    '- You may also use an explicit hosted URL: `[embed url="/__openclaw__/canvas/documents/cv_123/index.html" title="Status" height="320" /]`.',
+    '- Never use local filesystem paths or `file://...` URLs in `[embed ...]`. Hosted embeds must point at `/__openclaw__/canvas/...` URLs or use `ref="..."`.',
     params.canvasRootDir
-      ? `- The active hosted canvas root for this session is: \`${sanitizeForPromptLiteral(params.canvasRootDir)}\`. If you manually stage a hosted canvas file, write it there, not in the workspace.`
-      : "- The active hosted canvas root is profile-scoped, not workspace-scoped. If you manually stage a hosted canvas file, write it under the active profile canvas root, not in the workspace.",
-    "- Quote all attribute values. Prefer `ref` for hosted canvas documents unless you already have the full `/__openclaw__/canvas/documents/<id>/index.html` URL.",
+      ? `- The active hosted embed root for this session is: \`${sanitizeForPromptLiteral(params.canvasRootDir)}\`. If you manually stage a hosted embed file, write it there, not in the workspace.`
+      : "- The active hosted embed root is profile-scoped, not workspace-scoped. If you manually stage a hosted embed file, write it under the active profile embed root, not in the workspace.",
+    "- Quote all attribute values. Prefer `ref` for hosted documents unless you already have the full `/__openclaw__/canvas/documents/<id>/index.html` URL.",
     "",
   ];
 }
@@ -457,6 +459,7 @@ export function buildAgentSystemPrompt(params: {
   const execToolName = resolveToolName("exec");
   const processToolName = resolveToolName("process");
   const extraSystemPrompt = params.extraSystemPrompt?.trim();
+  const providerDynamicSuffix: string | undefined = undefined;
   const ownerDisplay = params.ownerDisplay === "hash" ? "hash" : "raw";
   const ownerLine = buildOwnerIdentityLine(
     params.ownerNumbers ?? [],
@@ -730,26 +733,16 @@ export function buildAgentSystemPrompt(params: {
   const validContextFiles = contextFiles.filter(
     (file) => typeof file.path === "string" && file.path.trim().length > 0,
   );
-  if (validContextFiles.length > 0) {
-    lines.push("# Project Context", "");
-    if (validContextFiles.length > 0) {
-      const hasSoulFile = validContextFiles.some((file) => {
-        const normalizedPath = file.path.trim().replace(/\\/g, "/");
-        const baseName = normalizedPath.split("/").pop() ?? normalizedPath;
-        return baseName.toLowerCase() === "soul.md";
-      });
-      lines.push("The following project context files have been loaded:");
-      if (hasSoulFile) {
-        lines.push(
-          "If SOUL.md is present, embody its persona and tone. Avoid stiff, generic replies; follow its guidance unless higher-priority instructions override it.",
-        );
-      }
-      lines.push("");
-    }
-    for (const file of validContextFiles) {
-      lines.push(`## ${file.path}`, "", file.content, "");
-    }
-  }
+  const orderedContextFiles = sortContextFilesForPrompt(validContextFiles);
+  const stableContextFiles = orderedContextFiles.filter((file) => !isDynamicContextFile(file.path));
+  const dynamicContextFiles = orderedContextFiles.filter((file) => isDynamicContextFile(file.path));
+  lines.push(
+    ...buildProjectContextSection({
+      files: stableContextFiles,
+      heading: "# Project Context",
+      dynamic: false,
+    }),
+  );
 
   // Skip silent replies for subagent/none modes
   if (!isMinimal) {
