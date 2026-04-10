@@ -185,11 +185,12 @@ function buildReplyTagsSection(isMinimal: boolean) {
   }
   return [
     "## Reply Tags",
-    "To request a native reply/quote on supported surfaces, include one tag in your reply:",
-    "- Reply tags must be the very first token in the message (no leading text/newlines): [[reply_to_current]] your reply.",
-    "- [[reply_to_current]] replies to the triggering message.",
-    "- Prefer [[reply_to_current]]. Use [[reply_to:<id>]] only when an id was explicitly provided (e.g. by the user or a tool).",
-    "Whitespace inside the tag is allowed (e.g. [[ reply_to_current ]] / [[ reply_to: 123 ]]).",
+    "Use reply tags to request native reply/quote on supported surfaces.",
+    "- [[reply_to_current]] replies to the triggering message. Prefer this for single-message replies.",
+    "- [[reply_to:<message_id>]] replies to a specific message by id. Use only when an id was explicitly provided (e.g. in the conversation info JSON or by a tool).",
+    "- A reply tag must appear at the start of the text it applies to: [[reply_to_current]] your reply.",
+    "- Multiple tags allowed: when answering queued messages from different senders, use [[reply_to:<message_id>]] before each section to direct each reply to the correct message.",
+    "Whitespace inside tags is allowed (e.g. [[ reply_to_current ]] / [[ reply_to: 123 ]]).",
     "Tags are stripped before sending; support depends on the current channel config.",
     "",
   ];
