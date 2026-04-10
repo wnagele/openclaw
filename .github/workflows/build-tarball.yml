@@ -1,0 +1,47 @@
+name: Build Tarball
+
+on:
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  NODE_VERSION: "24.x"
+  PNPM_VERSION: "10.32.1"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node environment
+        uses: ./.github/actions/setup-node-env
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          pnpm-version: ${{ env.PNPM_VERSION }}
+          install-bun: "true"
+          use-sticky-disk: "false"
+
+      - name: Build
+        run: pnpm build
+
+      - name: Build Control UI
+        run: pnpm ui:build
+
+      - name: Pack tarball
+        run: |
+          set -euo pipefail
+          OPENCLAW_PREPACK_PREPARED=1 npm pack --ignore-scripts 2>/dev/null
+          TARBALL="$(ls openclaw-*.tgz)"
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+        id: pack
+
+      - name: Upload tarball
+        uses: actions/upload-artifact@v7
+        with:
+          name: openclaw-tarball
+          path: ${{ steps.pack.outputs.tarball }}
+          retention-days: 30
