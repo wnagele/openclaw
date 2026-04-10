@@ -19,7 +19,7 @@ import {
   LocalMediaAccessError,
   type LocalMediaAccessErrorCode,
 } from "./local-media-access.js";
-import { detectMime, extensionForMime, kindFromMime } from "./mime.js";
+import { detectMime, extensionForMime, kindFromMime, normalizeMimeType } from "./mime.js";
 
 export { getDefaultLocalRoots, LocalMediaAccessError };
 export type { LocalMediaAccessErrorCode };
@@ -40,6 +40,8 @@ type WebMediaOptions = {
   /** Caller already validated the local path (sandbox/other guards); requires readFile override. */
   sandboxValidated?: boolean;
   readFile?: (filePath: string) => Promise<Buffer>;
+  /** Host-local fs-policy read piggyback; rejects plaintext-like document sends. */
+  hostReadCapability?: boolean;
 };
 
 function resolveWebMediaOptions(params: {
@@ -65,6 +67,15 @@ function resolveWebMediaOptions(params: {
 
 const HEIC_MIME_RE = /^image\/hei[cf]$/i;
 const HEIC_EXT_RE = /\.(heic|heif)$/i;
+const HOST_READ_ALLOWED_DOCUMENT_MIMES = new Set([
+  "application/msword",
+  "application/pdf",
+  "application/vnd.ms-excel",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+]);
 const MB = 1024 * 1024;
 
 function formatMb(bytes: number, digits = 2): string {
@@ -87,6 +98,23 @@ function isHeicSource(opts: { contentType?: string; fileName?: string }): boolea
     return true;
   }
   return false;
+}
+
+function assertHostReadMediaAllowed(params: {
+  contentType?: string;
+  kind: MediaKind | undefined;
+}): void {
+  if (params.kind === "image" || params.kind === "audio" || params.kind === "video") {
+    return;
+  }
+  const normalizedMime = normalizeMimeType(params.contentType);
+  if (params.kind === "document" && normalizedMime && HOST_READ_ALLOWED_DOCUMENT_MIMES.has(normalizedMime)) {
+    return;
+  }
+  throw new LocalMediaAccessError(
+    "path-not-allowed",
+    `Host-local media sends only allow images, audio, video, PDF, and Office documents (got ${normalizedMime ?? "unknown"}).`,
+  );
 }
 
 function toJpegFileName(fileName?: string): string | undefined {
@@ -167,6 +195,7 @@ async function loadWebMediaInternal(
     localRoots,
     sandboxValidated = false,
     readFile: readFileOverride,
+    hostReadCapability = false,
   } = options;
   // Strip MEDIA: prefix used by agent tools (e.g. TTS) to tag media paths.
   // Be lenient: LLM output may add extra whitespace (e.g. "  MEDIA :  /tmp/x.png").
@@ -320,6 +349,9 @@ async function loadWebMediaInternal(
   }
   const mime = await detectMime({ buffer: data, filePath: mediaUrl });
   const kind = kindFromMime(mime);
+  if (hostReadCapability) {
+    assertHostReadMediaAllowed({ contentType: mime, kind });
+  }
   let fileName = path.basename(mediaUrl) || undefined;
   if (fileName && !path.extname(fileName) && mime) {
     const ext = extensionForMime(mime);

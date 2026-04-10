@@ -7,7 +7,7 @@ import {
   isPackageProvenControlUiRootSync,
   resolveControlUiRootSync,
 } from "../infra/control-ui-assets.js";
-import { readLocalFileSafely, SafeOpenError } from "../infra/fs-safe.js";
+import { openLocalFileSafely, readLocalFileSafely, SafeOpenError } from "../infra/fs-safe.js";
 import { safeFileURLToPath } from "../infra/local-file-access.js";
 import { isWithinDir } from "../infra/path-safety.js";
 import { openVerifiedFileSync } from "../infra/safe-open-sync.js";
@@ -317,15 +317,48 @@ export async function handleControlUiAssistantMediaRequest(
 
   try {
     await assertLocalMediaAllowed(source, getDefaultLocalRoots());
-    const { buffer } = await readLocalFileSafely({ filePath: source });
-    const mime = await detectMime({ buffer, filePath: source });
+    const opened = await openLocalFileSafely({ filePath: source });
+    let handleClosed = false;
+    const closeHandle = async () => {
+      if (handleClosed) {
+        return;
+      }
+      handleClosed = true;
+      await opened.handle.close().catch(() => {});
+    };
+    const sniffLength = Math.min(opened.stat.size, 8192);
+    const sniffBuffer = sniffLength > 0 ? Buffer.allocUnsafe(sniffLength) : undefined;
+    const bytesRead =
+      sniffBuffer && sniffLength > 0
+        ? (await opened.handle.read(sniffBuffer, 0, sniffLength, 0)).bytesRead
+        : 0;
+    const mime = await detectMime({
+      buffer: sniffBuffer?.subarray(0, bytesRead),
+      filePath: source,
+    });
     if (mime) {
       res.setHeader("Content-Type", mime);
     } else {
       res.setHeader("Content-Type", "application/octet-stream");
     }
     res.setHeader("Cache-Control", "no-cache");
-    res.end(buffer);
+    res.setHeader("Content-Length", String(opened.stat.size));
+    const stream = opened.handle.createReadStream({ start: 0, autoClose: false });
+    const finishClose = () => {
+      void closeHandle();
+    };
+    stream.once("end", finishClose);
+    stream.once("close", finishClose);
+    stream.once("error", () => {
+      void closeHandle();
+      if (!res.headersSent) {
+        respondControlUiNotFound(res);
+      } else {
+        res.destroy();
+      }
+    });
+    res.once("close", finishClose);
+    stream.pipe(res);
     return true;
   } catch {
     respondControlUiNotFound(res);
