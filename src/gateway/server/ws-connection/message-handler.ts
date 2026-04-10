@@ -48,7 +48,7 @@ import {
 } from "../../../utils/message-channel.js";
 import { resolveRuntimeServiceVersion } from "../../../version.js";
 import type { AuthRateLimiter } from "../../auth-rate-limit.js";
-import type { GatewayAuthResult, ResolvedGatewayAuth } from "../../auth.js";
+import type { GatewayAuthResult } from "../../auth.js";
 import { isLocalDirectRequest } from "../../auth.js";
 import {
   buildCanvasScopedHostUrl,
@@ -171,7 +171,7 @@ export function attachGatewayWsMessageHandler(params: {
   requestUserAgent?: string;
   canvasHostUrl?: string;
   connectNonce: string;
-  resolvedAuth: ResolvedGatewayAuth;
+  getResolvedAuth: () => ResolvedGatewayAuth;
   getRequiredSharedGatewaySessionGeneration?: () => string | undefined;
   /** Optional rate limiter for auth brute-force protection. */
   rateLimiter?: AuthRateLimiter;
@@ -211,7 +211,7 @@ export function attachGatewayWsMessageHandler(params: {
     requestUserAgent,
     canvasHostUrl,
     connectNonce,
-    resolvedAuth,
+    getResolvedAuth,
     getRequiredSharedGatewaySessionGeneration,
     rateLimiter,
     browserRateLimiter,
@@ -390,6 +390,7 @@ export function attachGatewayWsMessageHandler(params: {
 
         const frame = parsed;
         const connectParams = frame.params as ConnectParams;
+        const resolvedAuth = getResolvedAuth();
         const clientLabel = connectParams.client.displayName ?? connectParams.client.id;
         const clientMeta = {
           client: connectParams.client.id,
@@ -934,13 +935,12 @@ export function attachGatewayWsMessageHandler(params: {
               const requestedOperatorScopes = scopes.filter((scope) =>
                 scope.startsWith("operator."),
               );
-              approved =
-                bootstrapProfileForSilentApproval
-                  ? await approveBootstrapDevicePairing(
-                      pairing.request.requestId,
-                      bootstrapProfileForSilentApproval,
-                    )
-                  : requestedOperatorScopes.length > 0
+              approved = bootstrapProfileForSilentApproval
+                ? await approveBootstrapDevicePairing(
+                    pairing.request.requestId,
+                    bootstrapProfileForSilentApproval,
+                  )
+                : requestedOperatorScopes.length > 0
                   ? {
                       status: "forbidden" as const,
                       missingScope: requestedOperatorScopes[0] ?? "callerScopes-required",

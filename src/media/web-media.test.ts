@@ -15,12 +15,18 @@ let fixtureRoot = "";
 let tinyPngFile = "";
 let stateDir = "";
 let canvasPngFile = "";
+let workspaceDir = "";
+let workspacePngFile = "";
 
 beforeAll(async () => {
   ({ loadWebMedia } = await import("./web-media.js"));
   fixtureRoot = await fs.mkdtemp(path.join(resolvePreferredOpenClawTmpDir(), "web-media-core-"));
   tinyPngFile = path.join(fixtureRoot, "tiny.png");
   await fs.writeFile(tinyPngFile, Buffer.from(TINY_PNG_BASE64, "base64"));
+  workspaceDir = path.join(fixtureRoot, "workspace");
+  workspacePngFile = path.join(workspaceDir, "chart.png");
+  await fs.mkdir(workspaceDir, { recursive: true });
+  await fs.writeFile(workspacePngFile, Buffer.from(TINY_PNG_BASE64, "base64"));
   stateDir = resolveStateDir();
   canvasPngFile = path.join(
     stateDir,
@@ -135,6 +141,16 @@ describe("loadWebMedia", () => {
       `${CANVAS_HOST_PATH}/documents/cv_test/collection.media/tiny.png`,
       { maxBytes: 1024 * 1024 },
     );
+    expect(result.kind).toBe("image");
+    expect(result.buffer.length).toBeGreaterThan(0);
+  });
+
+  it("resolves relative local media paths against the provided workspace directory", async () => {
+    const result = await loadWebMedia("chart.png", {
+      maxBytes: 1024 * 1024,
+      localRoots: [workspaceDir],
+      workspaceDir,
+    });
     expect(result.kind).toBe("image");
     expect(result.buffer.length).toBeGreaterThan(0);
   });

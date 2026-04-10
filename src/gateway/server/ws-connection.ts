@@ -23,6 +23,7 @@ import {
   attachGatewayWsMessageHandler,
   type WsOriginCheckMetrics,
 } from "./ws-connection/message-handler.js";
+import { resolveSharedGatewaySessionGeneration } from "./ws-shared-generation.js";
 import type { GatewayWsClient } from "./ws-types.js";
 
 type SubsystemLogger = ReturnType<typeof createSubsystemLogger>;
@@ -147,6 +148,8 @@ export function attachGatewayWsConnectionHandler(params: AttachGatewayWsConnecti
     canvasHostServerPort,
     resolvedAuth,
     getResolvedAuth = () => resolvedAuth,
+    getRequiredSharedGatewaySessionGeneration = () =>
+      resolveSharedGatewaySessionGeneration(getResolvedAuth()),
     rateLimiter,
     browserRateLimiter,
     gatewayMethods,
@@ -372,9 +375,8 @@ export function attachGatewayWsConnectionHandler(params: AttachGatewayWsConnecti
       requestUserAgent,
       canvasHostUrl,
       connectNonce,
-      resolvedAuth: getResolvedAuth(),
-      getRequiredSharedGatewaySessionGeneration:
-        params.getRequiredSharedGatewaySessionGeneration,
+      getResolvedAuth,
+      getRequiredSharedGatewaySessionGeneration,
       rateLimiter,
       browserRateLimiter,
       gatewayMethods,

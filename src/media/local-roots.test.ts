@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   appendLocalMediaParentRoots,
+  buildMediaLocalRoots,
   getAgentScopedMediaLocalRoots,
   getAgentScopedMediaLocalRootsForSources,
   getDefaultMediaLocalRoots,
@@ -166,5 +167,16 @@ describe("local media roots", () => {
       }),
     );
     expectPicturesRootPresence({ roots, shouldContainPictures });
+  });
+
+  it("keeps the config-dir media cache root when state and config paths differ", () => {
+    const stateDir = path.join("/tmp", "openclaw-legacy-state");
+    const configDir = path.join("/tmp", "openclaw-current-config");
+    const roots = buildMediaLocalRoots(stateDir, configDir);
+
+    expectNormalizedRootsContain(roots, [
+      path.join(stateDir, "media"),
+      path.join(configDir, "media"),
+    ]);
   });
 });

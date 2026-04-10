@@ -35,6 +35,7 @@ type WebMediaOptions = {
   maxBytes?: number;
   optimizeImages?: boolean;
   ssrfPolicy?: SsrFPolicy;
+  workspaceDir?: string;
   /** Allowed root directories for local path reads. "any" is deprecated; prefer sandboxValidated + readFile. */
   localRoots?: readonly string[] | "any";
   /** Caller already validated the local path (sandbox/other guards); requires readFile override. */
@@ -67,6 +68,7 @@ function resolveWebMediaOptions(params: {
 
 const HEIC_MIME_RE = /^image\/hei[cf]$/i;
 const HEIC_EXT_RE = /\.(heic|heif)$/i;
+const WINDOWS_DRIVE_RE = /^[A-Za-z]:[\\/]/;
 const HOST_READ_ALLOWED_DOCUMENT_MIMES = new Set([
   "application/msword",
   "application/pdf",
@@ -108,7 +110,11 @@ function assertHostReadMediaAllowed(params: {
     return;
   }
   const normalizedMime = normalizeMimeType(params.contentType);
-  if (params.kind === "document" && normalizedMime && HOST_READ_ALLOWED_DOCUMENT_MIMES.has(normalizedMime)) {
+  if (
+    params.kind === "document" &&
+    normalizedMime &&
+    HOST_READ_ALLOWED_DOCUMENT_MIMES.has(normalizedMime)
+  ) {
     return;
   }
   throw new LocalMediaAccessError(
@@ -192,6 +198,7 @@ async function loadWebMediaInternal(
     maxBytes,
     optimizeImages = true,
     ssrfPolicy,
+    workspaceDir,
     localRoots,
     sandboxValidated = false,
     readFile: readFileOverride,
@@ -296,6 +303,9 @@ async function loadWebMediaInternal(
   // Expand tilde paths to absolute paths (e.g., ~/Downloads/photo.jpg)
   if (mediaUrl.startsWith("~")) {
     mediaUrl = resolveUserPath(mediaUrl);
+  }
+  if (workspaceDir && !path.isAbsolute(mediaUrl) && !WINDOWS_DRIVE_RE.test(mediaUrl)) {
+    mediaUrl = path.resolve(workspaceDir, mediaUrl);
   }
   try {
     assertNoWindowsNetworkPath(mediaUrl, "Local media path");
