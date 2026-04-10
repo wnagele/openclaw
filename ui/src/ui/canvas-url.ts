@@ -11,6 +11,21 @@ function isCanvasHttpPath(pathname: string): boolean {
   );
 }
 
+function sanitizeCanvasEntryUrl(rawEntryUrl: string): string | undefined {
+  try {
+    const entry = new URL(rawEntryUrl, "http://localhost");
+    if (entry.origin !== "http://localhost") {
+      return undefined;
+    }
+    if (!isCanvasHttpPath(entry.pathname)) {
+      return undefined;
+    }
+    return `${entry.pathname}${entry.search}${entry.hash}`;
+  } catch {
+    return undefined;
+  }
+}
+
 export function resolveCanvasIframeUrl(
   entryUrl: string | undefined,
   canvasHostUrl?: string | null,
@@ -19,18 +34,22 @@ export function resolveCanvasIframeUrl(
   if (!rawEntryUrl) {
     return undefined;
   }
+  const safeEntryUrl = sanitizeCanvasEntryUrl(rawEntryUrl);
+  if (!safeEntryUrl) {
+    return undefined;
+  }
   if (!canvasHostUrl?.trim()) {
-    return rawEntryUrl;
+    return safeEntryUrl;
   }
   try {
     const scopedHostUrl = new URL(canvasHostUrl);
     const scopedPrefix = scopedHostUrl.pathname.replace(/\/+$/, "");
     if (!scopedPrefix.startsWith(CANVAS_CAPABILITY_PATH_PREFIX)) {
-      return rawEntryUrl;
+      return safeEntryUrl;
     }
-    const entry = new URL(rawEntryUrl, scopedHostUrl.origin);
+    const entry = new URL(safeEntryUrl, scopedHostUrl.origin);
     if (!isCanvasHttpPath(entry.pathname)) {
-      return rawEntryUrl;
+      return safeEntryUrl;
     }
     entry.protocol = scopedHostUrl.protocol;
     entry.username = scopedHostUrl.username;
@@ -39,6 +58,6 @@ export function resolveCanvasIframeUrl(
     entry.pathname = `${scopedPrefix}${entry.pathname}`;
     return entry.toString();
   } catch {
-    return rawEntryUrl;
+    return safeEntryUrl;
   }
 }
