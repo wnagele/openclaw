@@ -101,7 +101,6 @@ import {
 import { renderChat } from "./views/chat.ts";
 import { renderCommandPalette } from "./views/command-palette.ts";
 import { renderConfig, type ConfigProps } from "./views/config.ts";
-import { renderDreaming } from "./views/dreaming.ts";
 import { renderExecApprovalPrompt } from "./views/exec-approval.ts";
 import { renderGatewayUrlConfirmation } from "./views/gateway-url-confirmation.ts";
 import { renderLoginGate } from "./views/login-gate.ts";
@@ -1754,11 +1753,11 @@ export function renderApp(state: AppViewState) {
               assistantName: state.assistantName,
               assistantAvatar: state.assistantAvatar,
               localMediaPreviewRoots: state.localMediaPreviewRoots,
+              assistantAttachmentAuthToken: state.settings.token.trim() || null,
               basePath: state.basePath ?? "",
             })
           : nothing}
-        ${renderConfigTabForActiveTab()}
-        ${renderConfigTabForActiveTab()}
+        ${renderConfigTabForActiveTab()} ${renderConfigTabForActiveTab()}
         ${state.tab === "debug"
           ? lazyRender(lazyDebug, (m) =>
               m.renderDebug({

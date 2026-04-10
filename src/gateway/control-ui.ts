@@ -17,6 +17,8 @@ import { AVATAR_MAX_BYTES } from "../shared/avatar-policy.js";
 import { resolveUserPath } from "../utils.js";
 import { resolveRuntimeServiceVersion } from "../version.js";
 import { DEFAULT_ASSISTANT_IDENTITY, resolveAssistantIdentity } from "./assistant-identity.js";
+import type { AuthRateLimiter } from "./auth-rate-limit.js";
+import { authorizeHttpGatewayConnect, type ResolvedGatewayAuth } from "./auth.js";
 import {
   CONTROL_UI_BOOTSTRAP_CONFIG_PATH,
   type ControlUiBootstrapConfig,
@@ -34,6 +36,8 @@ import {
   normalizeControlUiBasePath,
   resolveAssistantAvatarUrl,
 } from "./control-ui-shared.js";
+import { sendGatewayAuthFailure } from "./http-common.js";
+import { getBearerToken } from "./http-utils.js";
 
 const ROOT_PREFIX = "/";
 const CONTROL_UI_ASSISTANT_MEDIA_PREFIX = "/__openclaw__/assistant-media";
@@ -183,6 +187,24 @@ function resolveAssistantMediaRoutePath(basePath?: string): string {
   return `${normalizedBasePath}${CONTROL_UI_ASSISTANT_MEDIA_PREFIX}`;
 }
 
+function resolveAssistantMediaAuthToken(req: IncomingMessage): string | undefined {
+  const bearer = getBearerToken(req);
+  if (bearer) {
+    return bearer;
+  }
+  const urlRaw = req.url;
+  if (!urlRaw) {
+    return undefined;
+  }
+  try {
+    const url = new URL(urlRaw, "http://localhost");
+    const token = url.searchParams.get("token")?.trim();
+    return token || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 type AssistantMediaAvailability =
   | { available: true }
   | { available: false; reason: string; code: string };
@@ -247,7 +269,13 @@ async function resolveAssistantMediaAvailability(
 export async function handleControlUiAssistantMediaRequest(
   req: IncomingMessage,
   res: ServerResponse,
-  opts?: { basePath?: string },
+  opts?: {
+    basePath?: string;
+    auth?: ResolvedGatewayAuth;
+    trustedProxies?: string[];
+    allowRealIpFallback?: boolean;
+    rateLimiter?: AuthRateLimiter;
+  },
 ): Promise<boolean> {
   const urlRaw = req.url;
   if (!urlRaw || !isReadHttpMethod(req.method)) {
@@ -259,6 +287,21 @@ export async function handleControlUiAssistantMediaRequest(
   }
 
   applyControlUiSecurityHeaders(res);
+  if (opts?.auth) {
+    const token = resolveAssistantMediaAuthToken(req);
+    const authResult = await authorizeHttpGatewayConnect({
+      auth: opts.auth,
+      connectAuth: token ? { token, password: token } : null,
+      req,
+      trustedProxies: opts.trustedProxies,
+      allowRealIpFallback: opts.allowRealIpFallback,
+      rateLimiter: opts.rateLimiter,
+    });
+    if (!authResult.ok) {
+      sendGatewayAuthFailure(res, authResult);
+      return true;
+    }
+  }
   const source = normalizeAssistantMediaSource(url.searchParams.get("source") ?? "");
   if (!source) {
     respondControlUiNotFound(res);

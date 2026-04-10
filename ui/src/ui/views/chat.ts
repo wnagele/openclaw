@@ -100,6 +100,7 @@ export type ChatProps = {
   assistantName: string;
   assistantAvatar: string | null;
   localMediaPreviewRoots?: string[];
+  assistantAttachmentAuthToken?: string | null;
   autoExpandToolCalls?: boolean;
   attachments?: ChatAttachment[];
   onAttachmentsChange?: (attachments: ChatAttachment[]) => void;
@@ -1235,6 +1236,7 @@ export function renderChat(props: ChatProps) {
                 assistantAvatar: assistantIdentity.avatar,
                 basePath: props.basePath,
                 localMediaPreviewRoots: props.localMediaPreviewRoots ?? [],
+                assistantAttachmentAuthToken: props.assistantAttachmentAuthToken ?? null,
                 canvasHostUrl: props.canvasHostUrl,
                 contextWindow:
                   activeSession?.contextTokens ?? props.sessions?.defaults?.contextTokens ?? null,

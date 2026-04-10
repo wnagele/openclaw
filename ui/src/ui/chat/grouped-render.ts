@@ -154,6 +154,7 @@ export function renderMessageGroup(
     assistantAvatar?: string | null;
     basePath?: string;
     localMediaPreviewRoots?: readonly string[];
+    assistantAttachmentAuthToken?: string | null;
     canvasHostUrl?: string | null;
     contextWindow?: number | null;
     onDelete?: () => void;
@@ -214,6 +215,7 @@ export function renderMessageGroup(
               canvasHostUrl: opts.canvasHostUrl,
               basePath: opts.basePath,
               localMediaPreviewRoots: opts.localMediaPreviewRoots,
+              assistantAttachmentAuthToken: opts.assistantAttachmentAuthToken,
             },
             opts.onOpenSidebar,
           ),
@@ -660,17 +662,30 @@ function isLocalAttachmentPreviewAllowed(
   });
 }
 
-function buildAssistantAttachmentUrl(source: string, basePath?: string): string {
+function buildAssistantAttachmentUrl(
+  source: string,
+  basePath?: string,
+  authToken?: string | null,
+): string {
   if (!isLocalAssistantAttachmentSource(source)) {
     return source;
   }
   const normalizedBasePath =
     basePath && basePath !== "/" ? (basePath.endsWith("/") ? basePath.slice(0, -1) : basePath) : "";
-  return `${normalizedBasePath}/__openclaw__/assistant-media?source=${encodeURIComponent(source)}`;
+  const params = new URLSearchParams({ source });
+  const normalizedToken = authToken?.trim();
+  if (normalizedToken) {
+    params.set("token", normalizedToken);
+  }
+  return `${normalizedBasePath}/__openclaw__/assistant-media?${params.toString()}`;
 }
 
-function buildAssistantAttachmentMetaUrl(source: string, basePath?: string): string {
-  const attachmentUrl = buildAssistantAttachmentUrl(source, basePath);
+function buildAssistantAttachmentMetaUrl(
+  source: string,
+  basePath?: string,
+  authToken?: string | null,
+): string {
+  const attachmentUrl = buildAssistantAttachmentUrl(source, basePath, authToken);
   return `${attachmentUrl}${attachmentUrl.includes("?") ? "&" : "?"}meta=1`;
 }
 
@@ -678,6 +693,7 @@ function resolveAssistantAttachmentAvailability(
   source: string,
   localMediaPreviewRoots: readonly string[],
   basePath: string | undefined,
+  authToken: string | null | undefined,
   onRequestUpdate: (() => void) | undefined,
 ): AssistantAttachmentAvailability {
   if (!isLocalAssistantAttachmentSource(source)) {
@@ -693,7 +709,7 @@ function resolveAssistantAttachmentAvailability(
   }
   assistantAttachmentAvailabilityCache.set(cacheKey, { status: "checking" });
   if (typeof fetch === "function") {
-    void fetch(buildAssistantAttachmentMetaUrl(source, basePath), {
+    void fetch(buildAssistantAttachmentMetaUrl(source, basePath, authToken), {
       method: "GET",
       headers: { Accept: "application/json" },
       credentials: "same-origin",
@@ -759,6 +775,7 @@ function renderAssistantAttachments(
   attachments: Array<Extract<MessageContentItem, { type: "attachment" }>>,
   localMediaPreviewRoots: readonly string[],
   basePath?: string,
+  authToken?: string | null,
   onRequestUpdate?: () => void,
 ) {
   if (attachments.length === 0) {
@@ -771,11 +788,12 @@ function renderAssistantAttachments(
           attachment.url,
           localMediaPreviewRoots,
           basePath,
+          authToken,
           onRequestUpdate,
         );
         const attachmentUrl =
           availability.status === "available"
-            ? buildAssistantAttachmentUrl(attachment.url, basePath)
+            ? buildAssistantAttachmentUrl(attachment.url, basePath, authToken)
             : null;
         if (attachment.kind === "image") {
           if (!attachmentUrl) {
@@ -967,6 +985,7 @@ function renderGroupedMessage(
     canvasHostUrl?: string | null;
     basePath?: string;
     localMediaPreviewRoots?: readonly string[];
+    assistantAttachmentAuthToken?: string | null;
   },
   onOpenSidebar?: (content: SidebarContent) => void,
 ) {
@@ -1084,6 +1103,7 @@ function renderGroupedMessage(
                         assistantAttachments,
                         opts.localMediaPreviewRoots ?? [],
                         opts.basePath,
+                        opts.assistantAttachmentAuthToken,
                         opts.onRequestUpdate,
                       )}
                       ${reasoningMarkdown
@@ -1135,6 +1155,7 @@ function renderGroupedMessage(
               assistantAttachments,
               opts.localMediaPreviewRoots ?? [],
               opts.basePath,
+              opts.assistantAttachmentAuthToken,
               opts.onRequestUpdate,
             )}
             ${reasoningMarkdown

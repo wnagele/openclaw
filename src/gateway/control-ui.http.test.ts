@@ -4,6 +4,7 @@ import type { IncomingMessage } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import type { ResolvedGatewayAuth } from "./auth.js";
 import { CONTROL_UI_BOOTSTRAP_CONFIG_PATH } from "./control-ui-contract.js";
 import {
   handleControlUiAssistantMediaRequest,
@@ -87,12 +88,17 @@ describe("handleControlUiHttpRequest", () => {
     url: string;
     method: "GET" | "HEAD";
     basePath?: string;
+    auth?: ResolvedGatewayAuth;
+    headers?: IncomingMessage["headers"];
   }) {
     const { res, end } = makeMockHttpResponse();
     const handled = await handleControlUiAssistantMediaRequest(
-      { url: params.url, method: params.method } as IncomingMessage,
+      { url: params.url, method: params.method, headers: params.headers ?? {} } as IncomingMessage,
       res,
-      params.basePath ? { basePath: params.basePath } : {},
+      {
+        ...(params.basePath ? { basePath: params.basePath } : {}),
+        ...(params.auth ? { auth: params.auth } : {}),
+      },
     );
     return { res, end, handled };
   }
@@ -158,8 +164,9 @@ describe("handleControlUiHttpRequest", () => {
       const filePath = path.join(tmpRoot, "photo.png");
       await fs.writeFile(filePath, Buffer.from("not-a-real-png"));
       const { res, handled } = await runAssistantMediaRequest({
-        url: `/__openclaw__/assistant-media?source=${encodeURIComponent(filePath)}`,
+        url: `/__openclaw__/assistant-media?source=${encodeURIComponent(filePath)}&token=test-token`,
         method: "GET",
+        auth: { mode: "token", token: "test-token", allowTailscale: false },
       });
       expect(handled).toBe(true);
       expect(res.statusCode).toBe(200);
@@ -174,8 +181,9 @@ describe("handleControlUiHttpRequest", () => {
       const filePath = path.join(tmp, "photo.png");
       await fs.writeFile(filePath, Buffer.from("not-a-real-png"));
       const { res, handled, end } = await runAssistantMediaRequest({
-        url: `/__openclaw__/assistant-media?source=${encodeURIComponent(filePath)}`,
+        url: `/__openclaw__/assistant-media?source=${encodeURIComponent(filePath)}&token=test-token`,
         method: "GET",
+        auth: { mode: "token", token: "test-token", allowTailscale: false },
       });
       expectNotFoundResponse({ handled, res, end });
     } finally {
@@ -190,8 +198,9 @@ describe("handleControlUiHttpRequest", () => {
       const filePath = path.join(tmpRoot, "photo.png");
       await fs.writeFile(filePath, Buffer.from("not-a-real-png"));
       const { res, handled, end } = await runAssistantMediaRequest({
-        url: `/__openclaw__/assistant-media?meta=1&source=${encodeURIComponent(filePath)}`,
+        url: `/__openclaw__/assistant-media?meta=1&source=${encodeURIComponent(filePath)}&token=test-token`,
         method: "GET",
+        auth: { mode: "token", token: "test-token", allowTailscale: false },
       });
       expect(handled).toBe(true);
       expect(res.statusCode).toBe(200);
@@ -203,8 +212,9 @@ describe("handleControlUiHttpRequest", () => {
 
   it("reports assistant local media availability failures with a reason", async () => {
     const { res, handled, end } = await runAssistantMediaRequest({
-      url: `/__openclaw__/assistant-media?meta=1&source=${encodeURIComponent("/Users/test/Documents/private.pdf")}`,
+      url: `/__openclaw__/assistant-media?meta=1&source=${encodeURIComponent("/Users/test/Documents/private.pdf")}&token=test-token`,
       method: "GET",
+      auth: { mode: "token", token: "test-token", allowTailscale: false },
     });
     expect(handled).toBe(true);
     expect(res.statusCode).toBe(200);
@@ -213,6 +223,25 @@ describe("handleControlUiHttpRequest", () => {
       code: "outside-allowed-folders",
       reason: "Outside allowed folders",
     });
+  });
+
+  it("rejects assistant local media without a valid auth token when auth is enabled", async () => {
+    const tmpRoot = path.join("/tmp/openclaw", `ui-media-auth-${Date.now()}`);
+    try {
+      await fs.mkdir(tmpRoot, { recursive: true });
+      const filePath = path.join(tmpRoot, "photo.png");
+      await fs.writeFile(filePath, Buffer.from("not-a-real-png"));
+      const { res, handled, end } = await runAssistantMediaRequest({
+        url: `/__openclaw__/assistant-media?source=${encodeURIComponent(filePath)}`,
+        method: "GET",
+        auth: { mode: "token", token: "test-token", allowTailscale: false },
+      });
+      expect(handled).toBe(true);
+      expect(res.statusCode).toBe(401);
+      expect(String(end.mock.calls[0]?.[0] ?? "")).toContain("Unauthorized");
+    } finally {
+      await fs.rm(tmpRoot, { recursive: true, force: true });
+    }
   });
 
   it("includes CSP hash for inline scripts in index.html", async () => {
