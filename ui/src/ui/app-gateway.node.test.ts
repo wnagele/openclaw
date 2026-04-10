@@ -98,6 +98,8 @@ type TestGatewayHost = Parameters<typeof connectGateway>[0] & {
   chatSideResult: unknown;
   chatSideResultTerminalRuns: Set<string>;
   chatStream: string | null;
+  chatToolMessages: Record<string, unknown>[];
+  toolStreamById: Map<string, unknown>;
   toolStreamOrder: string[];
 };
 
@@ -280,6 +282,27 @@ describe("connectGateway", () => {
     secondClient.emitClose({ code: 1005 });
     expect(host.lastError).toBe("disconnected (1005): no reason");
     expect(host.lastErrorCode).toBeNull();
+  });
+
+  it("preserves pending approval requests across reconnect", () => {
+    const host = createHost();
+    host.execApprovalQueue = [
+      {
+        id: "approval-1",
+        kind: "exec",
+        title: "Approve command",
+        summary: "rm -rf /tmp/nope",
+        createdAtMs: Date.now(),
+        expiresAtMs: Date.now() + 60_000,
+      } as never,
+    ];
+
+    connectGateway(host);
+    expect(host.execApprovalQueue).toHaveLength(1);
+
+    connectGateway(host);
+    expect(host.execApprovalQueue).toHaveLength(1);
+    expect(host.execApprovalQueue[0]?.id).toBe("approval-1");
   });
 
   it("maps generic fetch-failed auth errors to actionable token mismatch message", () => {
@@ -742,11 +765,11 @@ describe("connectGateway", () => {
   });
 
   it("keeps live tool messages until history reload completes after a final tool run", async () => {
-    let resolveHistory: (() => void) | null = null;
+    let resolveHistory: (() => void) | undefined;
     loadChatHistoryMock.mockImplementationOnce(
       () =>
-        new Promise<void>((resolve) => {
-          resolveHistory = resolve;
+        new Promise<undefined>((resolve) => {
+          resolveHistory = () => resolve(undefined);
         }),
     );
 
@@ -774,6 +797,52 @@ describe("connectGateway", () => {
     await Promise.resolve();
 
     expect(host.chatToolMessages).toEqual([]);
+  });
+
+  it("does not clear a newer run's tool stream when an older history reload settles", async () => {
+    let resolveHistory: (() => void) | undefined;
+    loadChatHistoryMock.mockImplementationOnce(
+      () =>
+        new Promise<undefined>((resolve) => {
+          resolveHistory = () => resolve(undefined);
+        }),
+    );
+
+    const { client, host } = connectHostGateway();
+    emitToolResultEvent(client);
+
+    client.emitEvent({
+      event: "chat",
+      payload: {
+        runId: "engine-run-1",
+        sessionKey: "main",
+        state: "final",
+        message: {
+          role: "assistant",
+          content: [{ type: "text", text: "Done" }],
+        },
+      },
+    });
+
+    host.chatRunId = "engine-run-2";
+    host.toolStreamById.set("tool-2", {
+      toolCallId: "tool-2",
+      runId: "engine-run-2",
+      name: "write",
+      startedAt: 2,
+      updatedAt: 2,
+      message: { role: "assistant", content: [{ type: "toolcall", name: "write" }] },
+    } as never);
+    host.toolStreamOrder = ["tool-2"];
+    host.chatToolMessages = [{ role: "assistant", content: [{ type: "toolcall", name: "write" }] }];
+
+    resolveHistory?.();
+    await Promise.resolve();
+
+    expect(host.toolStreamOrder).toEqual(["tool-2"]);
+    expect(host.chatToolMessages).toEqual([
+      { role: "assistant", content: [{ type: "toolcall", name: "write" }] },
+    ]);
   });
 });
 
