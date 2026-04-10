@@ -15,6 +15,7 @@ import { extractCanvasFromText } from "../../chat/canvas-render.js";
 import { resolveSessionFilePath } from "../../config/sessions.js";
 import { jsonUtf8Bytes } from "../../infra/json-utf8-bytes.js";
 import { isAudioFileName } from "../../media/mime.js";
+import type { PromptImageOrderEntry } from "../../media/prompt-image-order.js";
 import { type SavedMedia, saveMediaBuffer } from "../../media/store.js";
 import { createChannelReplyPipeline } from "../../plugin-sdk/channel-reply-pipeline.js";
 import { normalizeInputProvenance, type InputProvenance } from "../../sessions/input-provenance.js";
@@ -39,7 +40,11 @@ import {
   isChatStopCommandText,
   resolveChatRunExpiresAtMs,
 } from "../chat-abort.js";
-import { type ChatImageContent, parseMessageWithAttachments } from "../chat-attachments.js";
+import {
+  type ChatImageContent,
+  type OffloadedRef,
+  parseMessageWithAttachments,
+} from "../chat-attachments.js";
 import { stripEnvelopeFromMessage, stripEnvelopeFromMessages } from "../chat-sanitize.js";
 import { augmentChatHistoryWithCliSessionImports } from "../cli-session-history.js";
 import { ADMIN_SCOPE } from "../method-scopes.js";
@@ -363,20 +368,59 @@ function canInjectSystemProvenance(client: GatewayRequestHandlerOptions["client"
 
 async function persistChatSendImages(params: {
   images: ChatImageContent[];
+  imageOrder: PromptImageOrderEntry[];
+  offloadedRefs: OffloadedRef[];
   client: GatewayRequestHandlerOptions["client"];
   logGateway: GatewayRequestContext["logGateway"];
 }): Promise<SavedMedia[]> {
-  if (params.images.length === 0 || isAcpBridgeClient(params.client)) {
+  if ((params.images.length === 0 && params.offloadedRefs.length === 0) || isAcpBridgeClient(params.client)) {
     return [];
   }
-  const saved: SavedMedia[] = [];
+  const inlineSaved: SavedMedia[] = [];
   for (const img of params.images) {
     try {
-      saved.push(await saveMediaBuffer(Buffer.from(img.data, "base64"), img.mimeType, "inbound"));
+      inlineSaved.push(await saveMediaBuffer(Buffer.from(img.data, "base64"), img.mimeType, "inbound"));
     } catch (err) {
       params.logGateway.warn(
         `chat.send: failed to persist inbound image (${img.mimeType}): ${formatForLog(err)}`,
       );
+    }
+  }
+  const offloadedSaved = params.offloadedRefs.map((ref) => ({
+    id: ref.id,
+    path: ref.path,
+    size: 0,
+    contentType: ref.mimeType,
+  }));
+  if (params.imageOrder.length === 0) {
+    return [...inlineSaved, ...offloadedSaved];
+  }
+  const saved: SavedMedia[] = [];
+  let inlineIndex = 0;
+  let offloadedIndex = 0;
+  for (const entry of params.imageOrder) {
+    if (entry === "inline") {
+      const inline = inlineSaved[inlineIndex++];
+      if (inline) {
+        saved.push(inline);
+      }
+      continue;
+    }
+    const offloaded = offloadedSaved[offloadedIndex++];
+    if (offloaded) {
+      saved.push(offloaded);
+    }
+  }
+  for (; inlineIndex < inlineSaved.length; inlineIndex++) {
+    const inline = inlineSaved[inlineIndex];
+    if (inline) {
+      saved.push(inline);
+    }
+  }
+  for (; offloadedIndex < offloadedSaved.length; offloadedIndex++) {
+    const offloaded = offloadedSaved[offloadedIndex];
+    if (offloaded) {
+      saved.push(offloaded);
     }
   }
   return saved;
@@ -1700,7 +1744,8 @@ export const chatHandlers: GatewayRequestHandlers = {
     const { cfg, entry, canonicalKey: sessionKey } = loadSessionEntry(rawSessionKey);
     let parsedMessage = inboundMessage;
     let parsedImages: ChatImageContent[] = [];
-    let imageOrder: import("../../media/prompt-image-order.js").PromptImageOrderEntry[] = [];
+    let imageOrder: PromptImageOrderEntry[] = [];
+    let offloadedRefs: OffloadedRef[] = [];
     if (normalizedAttachments.length > 0) {
       const modelRef = resolveSessionModelRef(cfg, entry, undefined);
       const supportsImages = await resolveGatewayModelSupportsImages({
@@ -1717,6 +1762,7 @@ export const chatHandlers: GatewayRequestHandlers = {
         parsedMessage = parsed.message;
         parsedImages = parsed.images;
         imageOrder = parsed.imageOrder;
+        offloadedRefs = parsed.offloadedRefs;
       } catch (err) {
         respond(
           false,
@@ -1804,6 +1850,8 @@ export const chatHandlers: GatewayRequestHandlers = {
       respond(true, ackPayload, undefined, { runId: clientRunId });
       const persistedImagesPromise = persistChatSendImages({
         images: parsedImages,
+        imageOrder,
+        offloadedRefs,
         client,
         logGateway: context.logGateway,
       });

@@ -1601,6 +1601,78 @@ describe("chat directive tag stripping for non-streaming final payloads", () => 
     });
   });
 
+  it("preserves offloaded attachment media paths in transcript order", async () => {
+    createTranscriptFixture("openclaw-chat-send-user-transcript-offloaded-");
+    mockState.finalText = "ok";
+    mockState.triggerAgentRunStart = true;
+    mockState.sessionEntry = {
+      modelProvider: "test-provider",
+      model: "vision-model",
+    };
+    mockState.modelCatalog = [
+      {
+        provider: "test-provider",
+        id: "vision-model",
+        name: "Vision model",
+        input: ["text", "image"],
+      },
+    ];
+    mockState.savedMediaResults = [
+      { path: "/tmp/offloaded-big.png", contentType: "image/png" },
+      { path: "/tmp/chat-send-inline.png", contentType: "image/png" },
+    ];
+    const respond = vi.fn();
+    const context = createChatContext();
+    const bigPng = Buffer.alloc(2_100_000);
+    bigPng.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a], 0);
+
+    await runNonStreamingChatSend({
+      context,
+      respond,
+      idempotencyKey: "idem-user-transcript-offloaded",
+      message: "edit both",
+      requestParams: {
+        attachments: [
+          {
+            mimeType: "image/png",
+            content:
+              "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aYoYAAAAASUVORK5CYII=",
+          },
+          {
+            mimeType: "image/png",
+            content: bigPng.toString("base64"),
+          },
+        ],
+      },
+      expectBroadcast: false,
+      waitForCompletion: false,
+    });
+
+    await waitForAssertion(() => {
+      const userUpdate = mockState.emittedTranscriptUpdates.find(
+        (update) =>
+          typeof update.message === "object" &&
+          update.message !== null &&
+          (update.message as { role?: unknown }).role === "user",
+      );
+      const message = userUpdate?.message as
+        | {
+            MediaPath?: string;
+            MediaPaths?: string[];
+            MediaType?: string;
+            MediaTypes?: string[];
+          }
+        | undefined;
+      expect(message?.MediaPath).toBe("/tmp/chat-send-inline.png");
+      expect(message?.MediaPaths).toEqual([
+        "/tmp/chat-send-inline.png",
+        "/tmp/offloaded-big.png",
+      ]);
+      expect(message?.MediaType).toBe("image/png");
+      expect(message?.MediaTypes).toEqual(["image/png", "image/png"]);
+    });
+  });
+
   it("skips transcript media notes for ACP bridge clients", async () => {
     createTranscriptFixture("openclaw-chat-send-user-transcript-acp-images-");
     mockState.finalText = "ok";
