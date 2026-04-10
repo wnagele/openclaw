@@ -90,14 +90,22 @@ describe("handleControlUiHttpRequest", () => {
     basePath?: string;
     auth?: ResolvedGatewayAuth;
     headers?: IncomingMessage["headers"];
+    trustedProxies?: string[];
+    remoteAddress?: string;
   }) {
     const { res, end } = makeMockHttpResponse();
     const handled = await handleControlUiAssistantMediaRequest(
-      { url: params.url, method: params.method, headers: params.headers ?? {} } as IncomingMessage,
+      {
+        url: params.url,
+        method: params.method,
+        headers: params.headers ?? {},
+        socket: { remoteAddress: params.remoteAddress ?? "127.0.0.1" },
+      } as IncomingMessage,
       res,
       {
         ...(params.basePath ? { basePath: params.basePath } : {}),
         ...(params.auth ? { auth: params.auth } : {}),
+        ...(params.trustedProxies ? { trustedProxies: params.trustedProxies } : {}),
       },
     );
     return { res, end, handled };
@@ -235,6 +243,40 @@ describe("handleControlUiHttpRequest", () => {
         url: `/__openclaw__/assistant-media?source=${encodeURIComponent(filePath)}`,
         method: "GET",
         auth: { mode: "token", token: "test-token", allowTailscale: false },
+      });
+      expect(handled).toBe(true);
+      expect(res.statusCode).toBe(401);
+      expect(String(end.mock.calls[0]?.[0] ?? "")).toContain("Unauthorized");
+    } finally {
+      await fs.rm(tmpRoot, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects trusted-proxy assistant media requests from disallowed browser origins", async () => {
+    const tmpRoot = path.join("/tmp/openclaw", `ui-media-proxy-${Date.now()}`);
+    try {
+      await fs.mkdir(tmpRoot, { recursive: true });
+      const filePath = path.join(tmpRoot, "photo.png");
+      await fs.writeFile(filePath, Buffer.from("not-a-real-png"));
+      const { res, handled, end } = await runAssistantMediaRequest({
+        url: `/__openclaw__/assistant-media?source=${encodeURIComponent(filePath)}`,
+        method: "GET",
+        auth: {
+          mode: "trusted-proxy",
+          allowTailscale: false,
+          trustedProxy: {
+            userHeaders: ["x-forwarded-user"],
+            allowedOrigins: ["https://control.example.com"],
+          },
+        },
+        trustedProxies: ["10.0.0.1"],
+        remoteAddress: "10.0.0.1",
+        headers: {
+          host: "gateway.example.com",
+          origin: "https://evil.example",
+          "x-forwarded-user": "nick@example.com",
+          "x-forwarded-proto": "https",
+        },
       });
       expect(handled).toBe(true);
       expect(res.statusCode).toBe(401);

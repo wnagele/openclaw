@@ -37,7 +37,7 @@ import {
   resolveAssistantAvatarUrl,
 } from "./control-ui-shared.js";
 import { sendGatewayAuthFailure } from "./http-common.js";
-import { getBearerToken } from "./http-utils.js";
+import { getBearerToken, resolveHttpBrowserOriginPolicy } from "./http-utils.js";
 
 const ROOT_PREFIX = "/";
 const CONTROL_UI_ASSISTANT_MEDIA_PREFIX = "/__openclaw__/assistant-media";
@@ -293,6 +293,7 @@ export async function handleControlUiAssistantMediaRequest(
       auth: opts.auth,
       connectAuth: token ? { token, password: token } : null,
       req,
+      browserOriginPolicy: resolveHttpBrowserOriginPolicy(req),
       trustedProxies: opts.trustedProxies,
       allowRealIpFallback: opts.allowRealIpFallback,
       rateLimiter: opts.rateLimiter,
